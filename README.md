@@ -19,7 +19,7 @@ In brief, You'll need these packages to use this script:
 * `procmail` (or similar; for invoking Python script)
 * `fetchmail` (if You want to sync with remote mail server)
 
-Depending on how would like You to use this solution, You may need `fetchmail` or not.
+Depending on how would You like to use this solution, You may need `fetchmail` or not.
 
 ## Important note before going any further
 
