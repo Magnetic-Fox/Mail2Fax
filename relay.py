@@ -67,12 +67,6 @@ def main():
 		for line in sys.stdin:
 			buffer+=line
 
-		tt=open("test.txt","w")
-		tt.write(buffer)
-		tt.close()
-
-		os.system("cp test.txt ~")
-
 		# import it
 		message=email.message_from_string(buffer)
 
