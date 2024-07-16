@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
-# Simple E-Mail to Fax Utility
+# Simple E-Mail to Fax Relay Utility for Procmail
 #
-# by Magnetic-Fox, 15-16.07.2024
+# by Magnetic-Fox, 13-16.07.2024
 #
 # (C)2024 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -14,19 +14,20 @@ import os
 import subprocess
 import base64
 
-# Simple string table
+# Simple string table (in Polish, but hope it's self-explanatory ;))
 NO_DATA=	"(brak danych)"
 SENDER=		"Nadawca: "
 SUBJECT=	"Temat:   "
 DATE=		"Data:    "
 
-# Fax number
+# Fax number (my internal phone number - You may change it)
 PHONE_NUMBER=	"1001"
 
 # Mail header decoding helper
 def decodeHeader(input):
 	output=""
 	if input!=None:
+		# try to decode header info
 		parts=email.header.decode_header(input)
 		for part in parts:
 			if part[1]==None:
@@ -41,6 +42,7 @@ def decodeHeader(input):
 
 # Main program code
 def main():
+	# prepare everything
 	oldDir=os.getcwd()
 	dir=tempfile.TemporaryDirectory()
 	os.chdir(dir.name)
@@ -50,17 +52,22 @@ def main():
 	first=True
 	anything=False
 	try:
+		# read the message from stdin
 		for line in sys.stdin:
 			buffer+=line
 
+		# import it
 		message=email.message_from_string(buffer)
 
+		# and preprocess
 		if message.is_multipart():
 			parts=message.get_payload()
 		else:
 			parts=[message]
 
+		# now process all parts of the message
 		for part in parts:
+			# decode all interesting information from headers at this point
 			if part["Content-Transfer-Encoding"]=="base64":
 				data=base64.b64decode(part.get_payload())
 			else:
@@ -71,10 +78,16 @@ def main():
 				fExt=""
 			else:
 				fN, fExt = os.path.splitext(filename)
+
+			# if there is nothing interesting in here, go to the next part
 			if len(data)==0:
 				continue
+
+			# if we're dealing with text part
 			if part.get_content_maintype()=="text":
+				# and this is out first time
 				if first:
+					# then add some information from the header (if possible)
 					data=str(data)
 					s_from=decodeHeader(message["From"])
 					if s_from==None:
@@ -82,6 +95,9 @@ def main():
 					s_subj=decodeHeader(message["Subject"])
 					if s_subj==None:
 						s_subj=NO_DATA
+					elif (s_subj[0:6]=="[FAX] ") and (len(s_subj)>6):
+						# well, i think "[FAX]" part of the subject isn't really necessary ;)
+						s_subj=s_subj[6:]
 					s_date=decodeHeader(message["Date"])
 					if s_date==None:
 						s_date=NO_DATA
@@ -90,54 +106,75 @@ def main():
 					firstData+=DATE+s_date+"\n\n"
 					data=firstData+data
 					first=False
+				# save text to temporary file
 				outFile=str(counter)+".txt"
 				fl=open(outFile,"w")
 				fl.write(data)
 				fl.close()
+
+			# or maybe we got an image?
 			elif part.get_content_maintype()=="image":
 				if(fExt!=""):
 					outFile=str(counter)+fExt
 				else:
 					outFile=str(counter)+".jpg"
+				# save it too
 				fl=open(outFile,"wb")
 				fl.write(data)
 				fl.close()
+
+			# or something else?
 			else:
 				outFile=""
+				# discard it (it may be vulnerable)
 
 			counter+=1
 			if outFile!="":
 				fileList+=[outFile]
 
+		# now, process all the saved files
 		for x in range(len(fileList)):
 			fN, fExt = os.path.splitext(fileList[x])
 			if fExt==".txt":
+				# convert text files to G3 TIFFs
 				paps=subprocess.Popen(["paps","--top-margin=6",fileList[x]], stdout=subprocess.PIPE)
 				subprocess.check_output(["gs","-sDEVICE=tiffg3","-sOutputFile="+fN+".tiff","-dBATCH","-dNOPAUSE","-dSAFER","-dQUIET","-"], stdin=paps.stdout)
 				paps.wait()
+				# and update the file name on the list
 				fileList[x]=fN+".tiff"
 			else:
+				# convert images to TIFFs
 				subprocess.check_output(["convert",fileList[x],fN+".tiff"])
+				# and update the file name on the list
 				fileList[x]=fN+".tiff"
 
+		# now prepare the faxspool command
 		command=["faxspool",str(PHONE_NUMBER)]
 
 		for file in fileList:
+			# add only the TIFFs (additional safety condition)
 			if ".tiff" in file:
 				if not anything:
 					anything=True
 				command+=[file]
 
+		# if we got anything that can be sent
 		if anything:
+			# then send it
 			subprocess.check_output(command)
 
 	finally:
+		# finish everything
 		os.chdir(oldDir)
 		dir.cleanup()
 
+	# we're done ;)
 	return
 
-# Autorun
+# Autorun part
 if __name__ == "__main__":
-	main()
+	try:
+		main()
+	except:
+		exit(1)
 	exit(0)
