@@ -105,7 +105,7 @@ Finally, You may also need to enable starting Fetchmail as a daemon by changing 
 
 ### Testing
 
-Now, if everything was congifured properly, You can just send yourself an e-mail containing `[FAX]` at the beginning of the mail subject (or other string, You decided to choose). You can do it locally or remotely (if You're using Fetchmail). When message arrive it'll make all that "machinery" run the Python code, which will process the message and then - send it as a fax to the chosen phone number. :)
+Now, if everything was congifured properly, You can just send yourself an e-mail containing `[FAX]` at the beginning of the mail subject (or other string, You decided to choose). You can do it locally or remotely (if You're using Fetchmail). When the message will arrive it'll make all that "machinery" run the Python code, which will process the message and then - send it as a fax to the chosen phone number. :)
 
 ## Known problems
 
@@ -130,7 +130,7 @@ As I have mentioned before, I've made much effort to provide here working code a
 
 ## License
 
-Free for personal use. Please do not use these solutions comercially (as they are not so good tested to be intended to). However, if You still like to anyway, please ask me before.
+Free for personal use. Please do not use these solutions commercially (as they are not so good tested to be intended to). However, if You still like to anyway, please ask me before.
 
 Bartłomiej "Magnetic-Fox" Węgrzyn,
 16th July 2024.
