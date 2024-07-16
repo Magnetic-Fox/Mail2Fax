@@ -28,6 +28,9 @@ PHONE_NUMBER=	"1001"
 # Subject trigger to be removed (leave the space)
 SUBJECT_TRIGGER="[FAX] "
 
+# Use plain or html text when it comes to decide?
+USE_PLAIN=True
+
 # Great HTML to text part found on Stack Overflow
 class HTMLFilter(html.parser.HTMLParser):
 	text=""
@@ -78,6 +81,30 @@ def main():
 
 		# now process all parts of the message
 		for part in parts:
+			# Unpack text from multipart (plain and html decision)
+			if part.is_multipart():
+				# Plain temporary variable
+				pl=None
+				# Non-plain temporary variable
+				ot=None
+				for micropart in part.get_payload():
+					if micropart.get_content_subtype()=="plain":
+						pl=micropart
+					else:
+						ot=micropart
+				if USE_PLAIN:
+					if pl==None:
+						if ot!=None:
+							part=ot
+					else:
+						part=pl
+				else:
+					if ot==None:
+						if pl!=None:
+							part=pl
+					else:
+						part=ot
+
 			# decode all interesting information from headers at this point
 			encoding=part.get_content_charset()
 			if encoding==None:
@@ -189,6 +216,7 @@ def main():
 		if anything:
 			# then send it
 			subprocess.check_output(command)
+			pass
 
 	finally:
 		# finish everything
