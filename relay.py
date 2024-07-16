@@ -9,10 +9,12 @@
 import tempfile
 import email
 import email.header
+import email.quoprimime
 import sys
 import os
 import subprocess
 import base64
+import html.parser
 
 # Simple string table (in Polish, but hope it's self-explanatory ;))
 NO_DATA=	"(brak danych)"
@@ -22,6 +24,15 @@ DATE=		"Data:    "
 
 # Fax number (my internal phone number - You may change it)
 PHONE_NUMBER=	"1001"
+
+# Subject trigger to be removed (leave the space)
+SUBJECT_TRIGGER="[FAX] "
+
+# Great HTML to text part found on Stack Overflow
+class HTMLFilter(html.parser.HTMLParser):
+	text=""
+	def handle_data(self, data):
+		self.text+=data
 
 # Mail header decoding helper
 def decodeHeader(input):
@@ -56,6 +67,12 @@ def main():
 		for line in sys.stdin:
 			buffer+=line
 
+		tt=open("test.txt","w")
+		tt.write(buffer)
+		tt.close()
+
+		os.system("cp test.txt ~")
+
 		# import it
 		message=email.message_from_string(buffer)
 
@@ -68,8 +85,14 @@ def main():
 		# now process all parts of the message
 		for part in parts:
 			# decode all interesting information from headers at this point
+			encoding=part.get_content_charset()
+			if encoding==None:
+				encoding="utf-8"
+
 			if part["Content-Transfer-Encoding"]=="base64":
 				data=base64.b64decode(part.get_payload())
+			elif part["Content-Transfer-Encoding"]=="quoted-printable":
+				data=email.quoprimime.body_decode(part.get_payload()).encode("latin1").decode(encoding)
 			else:
 				data=part.get_payload()
 			filename=part.get_filename()
@@ -85,19 +108,29 @@ def main():
 
 			# if we're dealing with text part
 			if part.get_content_maintype()=="text":
+				# get rid of "bytes" type (which is a bit annoying thing in Python)
+				try:
+					data=str(data,encoding)
+				except:
+					data=str(data)
+
+				# convert HTML to text
+				if part.get_content_subtype()=="html":
+					converter=HTMLFilter()
+					converter.feed(data)
+					data=converter.text
 				# and this is out first time
 				if first:
 					# then add some information from the header (if possible)
-					data=str(data)
 					s_from=decodeHeader(message["From"])
 					if s_from==None:
 						s_from=NO_DATA
 					s_subj=decodeHeader(message["Subject"])
 					if s_subj==None:
 						s_subj=NO_DATA
-					elif (s_subj[0:6]=="[FAX] ") and (len(s_subj)>6):
-						# well, i think "[FAX]" part of the subject isn't really necessary ;)
-						s_subj=s_subj[6:]
+					elif (s_subj[0:len(SUBJECT_TRIGGER)]==SUBJECT_TRIGGER) and (len(s_subj)>len(SUBJECT_TRIGGER)):
+						# well, i think subject trigger part isn't really necessary here ;)
+						s_subj=s_subj[len(SUBJECT_TRIGGER):]
 					s_date=decodeHeader(message["Date"])
 					if s_date==None:
 						s_date=NO_DATA
