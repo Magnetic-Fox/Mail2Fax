@@ -69,7 +69,7 @@ This file just has to invoke Procmail, so its content might be as simple as this
 
 ### Configuring Procmail
 
-Create the `.procmailrc` file in home directory of chosen account. You'll need to provide simple conditions, which will control which messages have to be send to the script. As these might be sent to You as a plain text or Base64, You'll need at least two conditions:
+Create the `.procmailrc` file in home directory of chosen account. You'll need to provide simple conditions, which will control which messages have to be sent to the script. As these might be sent to You as a plain text or Base64, You'll need at least two conditions:
 
 ```
 :0
