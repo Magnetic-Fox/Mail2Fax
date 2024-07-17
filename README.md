@@ -73,7 +73,7 @@ Create the `.procmailrc` file in home directory of chosen account. You'll need t
 
 ```
 :0
-* ^Subject:.\[FAX\]*
+* ^Subject:.*\[FAX\]*
 | $HOME/relay.py
 
 :0
