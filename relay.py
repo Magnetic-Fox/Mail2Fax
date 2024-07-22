@@ -67,6 +67,7 @@ def main():
 	oldDir=os.getcwd()
 	dir=tempfile.TemporaryDirectory()
 	os.chdir(dir.name)
+	outFile=""
 	buffer=""
 	counter=1
 	fileList=[]
