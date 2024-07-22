@@ -2,7 +2,7 @@
 
 # Simple E-Mail to Fax Relay Utility for Procmail
 #
-# by Magnetic-Fox, 13-16.07.2024
+# by Magnetic-Fox, 13-22.07.2024
 #
 # (C)2024 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -25,8 +25,15 @@ DATE=		"Data:    "
 # Fax number (my internal phone number - You may change it)
 PHONE_NUMBER=	"1001"
 
+# Triggers control
+DELETE_SUBJECT_TRIGGER=True
+DELETE_MESSAGE_TRIGGER=True
+
 # Subject trigger to be removed (leave the space)
 SUBJECT_TRIGGER="[FAX] "
+
+# Message trigger (to get rid of the text part)
+MESSAGE_TRIGGER="?????NOTEXT?????"
 
 # Use plain or html text when it comes to decide?
 USE_PLAIN=True
@@ -85,6 +92,7 @@ def main():
 			if part.is_multipart():
 				# Plain temporary variable
 				pl=None
+
 				# Non-plain temporary variable
 				ot=None
 				for micropart in part.get_payload():
@@ -140,6 +148,7 @@ def main():
 					converter=HTMLFilter()
 					converter.feed(data)
 					data=converter.text
+
 				# and this is out first time
 				if first:
 					# then add some information from the header (if possible)
@@ -150,8 +159,9 @@ def main():
 					if s_subj==None:
 						s_subj=NO_DATA
 					elif (s_subj[0:len(SUBJECT_TRIGGER)]==SUBJECT_TRIGGER) and (len(s_subj)>len(SUBJECT_TRIGGER)):
-						# well, i think subject trigger part isn't really necessary here ;)
-						s_subj=s_subj[len(SUBJECT_TRIGGER):]
+						if DELETE_SUBJECT_TRIGGER:
+							# well, i think subject trigger part isn't really necessary here ;)
+							s_subj=s_subj[len(SUBJECT_TRIGGER):]
 					s_date=decodeHeader(message["Date"])
 					if s_date==None:
 						s_date=NO_DATA
@@ -160,11 +170,18 @@ def main():
 					firstData+=DATE+s_date+"\n\n"
 					data=firstData+data
 					first=False
+
+				# is message triggered?
+				messageTriggered=MESSAGE_TRIGGER in data
+				if not DELETE_MESSAGE_TRIGGER:
+					messageTriggered=False
+
 				# save text to temporary file
-				outFile=str(counter)+".txt"
-				fl=open(outFile,"w")
-				fl.write(data)
-				fl.close()
+				if not messageTriggered:
+					outFile=str(counter)+".txt"
+					fl=open(outFile,"w")
+					fl.write(data)
+					fl.close()
 
 			# or maybe we got an image?
 			elif part.get_content_maintype()=="image":
@@ -172,6 +189,7 @@ def main():
 					outFile=str(counter)+fExt
 				else:
 					outFile=str(counter)+".jpg"
+
 				# save it too
 				fl=open(outFile,"wb")
 				fl.write(data)
@@ -194,11 +212,13 @@ def main():
 				paps=subprocess.Popen(["paps","--top-margin=6",fileList[x]], stdout=subprocess.PIPE)
 				subprocess.check_output(["gs","-sDEVICE=tiffg3","-sOutputFile="+fN+".tiff","-dBATCH","-dNOPAUSE","-dSAFER","-dQUIET","-"], stdin=paps.stdout)
 				paps.wait()
+
 				# and update the file name on the list
 				fileList[x]=fN+".tiff"
 			else:
 				# convert images to TIFFs
 				subprocess.check_output(["convert",fileList[x],fN+".tiff"])
+
 				# and update the file name on the list
 				fileList[x]=fN+".tiff"
 
