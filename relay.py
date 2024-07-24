@@ -2,7 +2,7 @@
 
 # Simple E-Mail to Fax Relay Utility for Procmail
 #
-# by Magnetic-Fox, 13-22.07.2024
+# by Magnetic-Fox, 13-24.07.2024
 #
 # (C)2024 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -15,28 +15,71 @@ import os
 import subprocess
 import base64
 import html.parser
+import consts_relay
 
-# Simple string table (in Polish, but hope it's self-explanatory ;))
-NO_DATA=	"(brak danych)"
-SENDER=		"Nadawca: "
-SUBJECT=	"Temat:   "
-DATE=		"Data:    "
+SETTINGS_LOADED=False
 
-# Fax number (my internal phone number - You may change it)
-PHONE_NUMBER=	"1001"
+def loadSettings(noData=None, sender=None, subject=None, date=None, phoneNumber=None, deleteSubjectTrigger=None, deleteMessageTrigger=None, subjectTrigger=None, messageTrigger=None, usePlain=None):
+	global NO_DATA, SENDER, SUBJECT, DATE, PHONE_NUMBER, DELETE_SUBJECT_TRIGGER, DELETE_MESSAGE_TRIGGER, SUBJECT_TRIGGER, MESSAGE_TRIGGER, USE_PLAIN, SETTINGS_LOADED
 
-# Triggers control
-DELETE_SUBJECT_TRIGGER=True
-DELETE_MESSAGE_TRIGGER=True
+	# load defaults or change something (if possible)
 
-# Subject trigger to be removed (leave the space)
-SUBJECT_TRIGGER="[FAX] "
+	# Simple string table
+	if noData==None:
+		NO_DATA=	"(no data)"
+	elif noData!="":
+		NO_DATA=	noData
+	if sender==None:
+		SENDER=		"Sender:  "
+	elif sender!="":
+		SENDER=		sender
+	if subject==None:
+		SUBJECT=	"Subject: "
+	elif subject!="":
+		SUBJECT=	subject
+	if date==None:
+		DATE=		"Date:    "
+	elif date!="":
+		DATE=		date
 
-# Message trigger (to get rid of the text part)
-MESSAGE_TRIGGER="?????NOTEXT?????"
+	# Fax number (the default is my internal fax number - You may change it here, or pass yours to the function)
+	if phoneNumber==None:
+		PHONE_NUMBER=	"1001"
+	elif phoneNumber!="":
+		PHONE_NUMBER=	phoneNumber
 
-# Use plain or html text when it comes to decide?
-USE_PLAIN=True
+	# Triggers control
+	if deleteSubjectTrigger==None:
+		DELETE_SUBJECT_TRIGGER=True
+	elif deleteSubjectTrigger!="":	# a bit stupid, but why not?
+		DELETE_SUBJECT_TRIGGER=deleteSubjectTrigger
+	if deleteMessageTrigger==None:
+		DELETE_MESSAGE_TRIGGER=True
+	elif deleteMessageTrigger!="":	# ditto
+		DELETE_MESSAGE_TRIGGER=deleteMessageTrigger
+
+	# Subject trigger to be removed
+	if subjectTrigger==None:
+		SUBJECT_TRIGGER="[FAX] "
+	elif subjectTrigger!="":
+		SUBJECT_TRIGGER=subjectTrigger
+
+	# Message trigger (string that make text part rejected at the output)
+	if messageTrigger==None:
+		MESSAGE_TRIGGER="?????NOTEXT?????"
+	elif messageTrigger!="":
+		MESSAGE_TRIGGER=messageTrigger
+
+	# What text version use when it comes to decide - plain or html?
+	if usePlain==None:
+		USE_PLAIN=True
+	elif usePlain!="":	# ditto
+		USE_PLAIN=usePlain
+
+	# Are settings loaded?
+	SETTINGS_LOADED=True
+
+	return
 
 # Great HTML to text part found on Stack Overflow
 class HTMLFilter(html.parser.HTMLParser):
@@ -61,9 +104,11 @@ def decodeHeader(input):
 				output+=part[0]
 	return output
 
-# Main program code
-def main():
+# Main program procedure
+def getAndProcess():
 	# prepare everything
+	if not SETTINGS_LOADED:
+		loadSettings()
 	oldDir=os.getcwd()
 	dir=tempfile.TemporaryDirectory()
 	os.chdir(dir.name)
@@ -250,7 +295,8 @@ def main():
 # Autorun part
 if __name__ == "__main__":
 	try:
-		main()
+		consts_relay.setConsts(loadSettings)
+		getAndProcess()
 	except:
 		exit(1)
 	exit(0)
