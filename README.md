@@ -23,8 +23,8 @@ Depending on how would You like to use this solution, You may need `fetchmail` o
 
 ## Important note before going any further
 
-This script uses constants, such as phone number to call, and a subject trigger to be removed from the actual message's subject before converting the text to image.
-These values are considered default and are intended to be changed to conform Your own needs. If You like, You may also alter the string table, which in this version is provided in Polish.
+The main script uses defaults, such as phone number to call, and a subject trigger to be removed from the actual message's subject before converting the text to image. It is not necessary to change them here.
+You should deal with `consts_relay.py` file, which is intended for setting constants. Values provided in this file are considered default and are intended to be changed to conform Your own needs.
 
 ## How it works?
 
@@ -137,4 +137,4 @@ As I have mentioned before, I've made much effort to provide here working code a
 Free for personal use. Please do not use these solutions commercially (as they are not so good tested to be intended to). However, if You still like to anyway, please ask me before.
 
 Bartłomiej "Magnetic-Fox" Węgrzyn,
-16th July 2024.
+24th July 2024.
