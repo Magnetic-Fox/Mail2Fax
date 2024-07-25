@@ -16,6 +16,8 @@ import subprocess
 import base64
 import html.parser
 import consts_relay
+import dateutil
+import datetime
 
 SETTINGS_LOADED=False
 
@@ -103,6 +105,19 @@ def decodeHeader(input):
 			except:
 				output+=part[0]
 	return output
+
+# Simple utility to make date/time more readable if possible
+def mailDateToFormat(inp, format="%Y-%m-%d %H:%M:%S"):
+	try:
+		localTimeZone=datetime.datetime.now(datetime.timezone.utc).astimezone().utcoffset()
+		temp=dateutil.parser.parse(inp)
+		offset=temp.utcoffset()
+		temp=temp.replace(tzinfo=None)
+		temp+=offset
+		temp-=localTimeZone
+		return temp.strftime(format)
+	except:
+		return inp
 
 # Main program procedure
 def getAndProcess():
@@ -208,7 +223,7 @@ def getAndProcess():
 						if DELETE_SUBJECT_TRIGGER:
 							# well, i think subject trigger part isn't really necessary here ;)
 							s_subj=s_subj[len(SUBJECT_TRIGGER):]
-					s_date=decodeHeader(message["Date"])
+					s_date=mailDateToFormat(decodeHeader(message["Date"]))
 					if s_date==None:
 						s_date=NO_DATA
 					firstData =SENDER+s_from+"\n"
