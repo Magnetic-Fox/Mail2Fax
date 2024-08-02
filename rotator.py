@@ -13,7 +13,7 @@ def isLandscape(image):
 	return image.width>image.height
 
 def rotate90(image):
-	return image.rotate(90,expand=1)
+	return image.rotate(-90,expand=1)
 
 def rotateIfNecessary(image):
 	if isLandscape(image):
