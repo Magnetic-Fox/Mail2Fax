@@ -18,6 +18,8 @@ import html.parser
 import consts_relay
 import dateutil
 import datetime
+import cutter
+import rotator
 
 SETTINGS_LOADED=False
 
@@ -274,14 +276,20 @@ def getAndProcess():
 				subprocess.check_output(["gs","-sDEVICE=tiffg3","-sOutputFile="+fN+".tiff","-dBATCH","-dNOPAUSE","-dSAFER","-dQUIET","-"], stdin=paps.stdout)
 				paps.wait()
 
-				# and update the file name on the list
+				# update the file name on the list
 				fileList[x]=fN+".tiff"
+
+				# and apply the cutter (to waste less paper on a fax machine)
+				cutter.loadAndCrop(fileList[x])
 			else:
 				# convert images to TIFFs
 				subprocess.check_output(["convert",fileList[x],fN+".tiff"])
 
-				# and update the file name on the list
+				# update the file name on the list
 				fileList[x]=fN+".tiff"
+
+				# and rotate if necessary
+				rotator.loadAndRotateIfNecessary(fileList[x])
 
 		# now prepare the faxspool command
 		command=["faxspool",str(PHONE_NUMBER)]
