@@ -2,7 +2,7 @@
 
 # Simple E-Mail to Fax Relay Utility for Procmail
 #
-# by Magnetic-Fox, 13-24.07.2024
+# by Magnetic-Fox, 13-24.07.2024, 19.08.2024
 #
 # (C)2024 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -19,7 +19,7 @@ import consts_relay
 import dateutil
 import datetime
 import cutter
-import rotator
+import PIL.Image
 
 SETTINGS_LOADED=False
 
@@ -252,11 +252,14 @@ def getAndProcess():
 					outFile=str(counter)+fExt
 				else:
 					outFile=str(counter)+".jpg"
-
-				# save it too
-				fl=open(outFile,"wb")
-				fl.write(data)
-				fl.close()
+				try:
+					# save it too
+					fl=open(outFile,"wb")
+					fl.write(data)
+					fl.close()
+				except:
+					# or just ignore if mail has wrong content-type info
+					pass
 
 			# or something else?
 			else:
@@ -282,14 +285,29 @@ def getAndProcess():
 				# and apply the cutter (to waste less paper on a fax machine)
 				cutter.loadAndCrop(fileList[x])
 			else:
-				# convert images to TIFFs
-				subprocess.check_output(["convert",fileList[x],fN+".tiff"])
+				# temporary variable
+				rotate=False
+
+				# test if image is landscape or portrait
+				img=PIL.Image.open(fileList[x])
+				width,height=img.size
+				img.close()
+				rotate=width>height
+
+				# prepare command
+				command=["convert",fileList[x]]
+
+				# rotate image if necessary
+				if rotate:
+					command+=["-rotate","90"]
+
+				command+=["-resize","1664>","-background","white","-gravity","northwest","-splice","32x0","-background","white","-gravity","northeast","-splice","32x0",fN+".tiff"]
+
+				# convert images to TIFFs with auto-size and auto-margin
+				subprocess.check_output(command)
 
 				# update the file name on the list
 				fileList[x]=fN+".tiff"
-
-				# and rotate if necessary
-				rotator.loadAndRotateIfNecessary(fileList[x])
 
 		# now prepare the faxspool command
 		command=["faxspool",str(PHONE_NUMBER)]
