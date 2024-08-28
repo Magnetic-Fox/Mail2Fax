@@ -2,7 +2,7 @@
 
 # Simple E-Mail to Fax Relay Utility for Procmail
 #
-# by Magnetic-Fox, 13-24.07.2024, 19.08.2024
+# by Magnetic-Fox, 13-24.07.2024, 19-25.08.2024
 #
 # (C)2024 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -275,7 +275,7 @@ def getAndProcess():
 			fN, fExt = os.path.splitext(fileList[x])
 			if fExt==".txt":
 				# convert text files to G3 TIFFs
-				paps=subprocess.Popen(["paps","--top-margin=6",fileList[x]], stdout=subprocess.PIPE)
+				paps=subprocess.Popen(["paps","--top-margin=6","--font=Monospace 10",fileList[x]], stdout=subprocess.PIPE)
 				subprocess.check_output(["gs","-sDEVICE=tiffg3","-sOutputFile="+fN+".tiff","-dBATCH","-dNOPAUSE","-dSAFER","-dQUIET","-"], stdin=paps.stdout)
 				paps.wait()
 
@@ -335,9 +335,16 @@ def getAndProcess():
 
 # Autorun part
 if __name__ == "__main__":
+	# Try to get and process incomming message
 	try:
 		consts_relay.setConsts(loadSettings)
 		getAndProcess()
-	except:
+
+	# I think it's much better this way
+	except Exception as e:
+		subprocess.check_output(["logger","relay.py: error: "+str(e)])
 		exit(1)
-	exit(0)
+
+	# And finally return 0 exit code
+	finally:
+		exit(0)
