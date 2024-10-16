@@ -115,8 +115,14 @@ def mailDateToFormat(inp, format="%Y-%m-%d %H:%M:%S"):
 		temp=dateutil.parser.parse(inp)
 		offset=temp.utcoffset()
 		temp=temp.replace(tzinfo=None)
-		temp+=offset
-		temp-=localTimeZone
+		if offset==None:
+			if localTimeZone!=None:
+				temp+=localTimeZone
+		else:
+			if localTimeZone==None:
+				temp-=offset
+			else:
+				temp+=(localTimeZone-offset)
 		return temp.strftime(format)
 	except:
 		return inp
