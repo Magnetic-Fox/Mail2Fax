@@ -2,7 +2,7 @@
 
 # Simple E-Mail to Fax Relay Utility for Procmail
 #
-# by Magnetic-Fox, 13-24.07.2024, 19-25.08.2024
+# by Magnetic-Fox, 13-24.07.2024, 19-25.08.2024, 16.10.2024
 #
 # (C)2024 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -211,6 +211,9 @@ def getAndProcess():
 					converter=HTMLFilter()
 					converter.feed(data)
 					data=converter.text
+
+				# convert any CR+LF to just LF (big thanks to MariuszK, who found that part missing!)
+				data=data.replace("\r\n","\n")
 
 				# and this is out first time
 				if first:
