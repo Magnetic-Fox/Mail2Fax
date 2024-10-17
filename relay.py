@@ -2,7 +2,7 @@
 
 # Simple E-Mail to Fax Relay Utility for Procmail
 #
-# by Magnetic-Fox, 13-24.07.2024, 19-25.08.2024, 16.10.2024
+# by Magnetic-Fox, 13-24.07.2024, 19-25.08.2024, 16-17.10.2024
 #
 # (C)2024 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -15,72 +15,51 @@ import os
 import subprocess
 import base64
 import html.parser
-import consts_relay
 import dateutil
 import datetime
 import cutter
 import PIL.Image
+import configparser
 
 SETTINGS_LOADED=False
 
-def loadSettings(noData=None, sender=None, subject=None, date=None, phoneNumber=None, deleteSubjectTrigger=None, deleteMessageTrigger=None, subjectTrigger=None, messageTrigger=None, usePlain=None):
+# simple procedure for passing error messages to the system log
+def logError(errorString):
+	subprocess.check_output(["logger","relay.py: error: "+errorString])
+	return
+
+# simple procedure for passing notices to the system log
+def logNotice(noticeString):
+        subprocess.check_output(["logger","relay.py: notice: "+noticeString])
+        return
+
+# procedure for loading settings from the INI file
+def loadSettings(settingsFile="relay_settings.ini"):
 	global NO_DATA, SENDER, SUBJECT, DATE, PHONE_NUMBER, DELETE_SUBJECT_TRIGGER, DELETE_MESSAGE_TRIGGER, SUBJECT_TRIGGER, MESSAGE_TRIGGER, USE_PLAIN, SETTINGS_LOADED
 
-	# load defaults or change something (if possible)
+	# create parser object and try to load the settings file
+	config=configparser.ConfigParser()
+	if config.read(settingsFile)==[]:
+		# try finding file in the script's path
+		try:
+			settingsFile=os.path.dirname(os.path.realpath(__file__))+"/"+settingsFile
+			config.read(settingsFile)
+		except:
+			pass
 
-	# Simple string table
-	if noData==None:
-		NO_DATA=	"(no data)"
-	elif noData!="":
-		NO_DATA=	noData
-	if sender==None:
-		SENDER=		"Sender:  "
-	elif sender!="":
-		SENDER=		sender
-	if subject==None:
-		SUBJECT=	"Subject: "
-	elif subject!="":
-		SUBJECT=	subject
-	if date==None:
-		DATE=		"Date:    "
-	elif date!="":
-		DATE=		date
+	# load settings if possible (or defaults, if not)
+	NO_DATA=config.get("strings","no_data",fallback="(no data)").replace('"','')
+	SENDER=config.get("strings","sender",fallback="Sender:  ").replace('"','')
+	SUBJECT=config.get("strings","subject",fallback="Subject: ").replace('"','')
+	DATE=config.get("strings","date",fallback="Date:    ").replace('"','')
+	PHONE_NUMBER=config.get("phone","number",fallback="").replace('"','')
+	DELETE_SUBJECT_TRIGGER=config.getboolean("message","delete_subject_trigger",fallback=True)
+	DELETE_MESSAGE_TRIGGER=config.getboolean("message","delete_message_trigger",fallback=True)
+	SUBJECT_TRIGGER=config.get("message","subject_trigger",fallback="[FAX] ").replace('"','')
+	MESSAGE_TRIGGER=config.get("message","message_trigger",fallback="!DISCARD!").replace('"','')
+	USE_PLAIN=config.getboolean("message","use_plain",fallback=True)
 
-	# Fax number (the default is my internal fax number - You may change it here, or pass yours to the function)
-	if phoneNumber==None:
-		PHONE_NUMBER=	"1001"
-	elif phoneNumber!="":
-		PHONE_NUMBER=	phoneNumber
-
-	# Triggers control
-	if deleteSubjectTrigger==None:
-		DELETE_SUBJECT_TRIGGER=True
-	elif deleteSubjectTrigger!="":	# a bit stupid, but why not?
-		DELETE_SUBJECT_TRIGGER=deleteSubjectTrigger
-	if deleteMessageTrigger==None:
-		DELETE_MESSAGE_TRIGGER=True
-	elif deleteMessageTrigger!="":	# ditto
-		DELETE_MESSAGE_TRIGGER=deleteMessageTrigger
-
-	# Subject trigger to be removed
-	if subjectTrigger==None:
-		SUBJECT_TRIGGER="[FAX] "
-	elif subjectTrigger!="":
-		SUBJECT_TRIGGER=subjectTrigger
-
-	# Message trigger (string that make text part rejected at the output)
-	if messageTrigger==None:
-		MESSAGE_TRIGGER="?????NOTEXT?????"
-	elif messageTrigger!="":
-		MESSAGE_TRIGGER=messageTrigger
-
-	# What text version use when it comes to decide - plain or html?
-	if usePlain==None:
-		USE_PLAIN=True
-	elif usePlain!="":	# ditto
-		USE_PLAIN=usePlain
-
-	# Are settings loaded?
+	# note that everything has finished
 	SETTINGS_LOADED=True
 
 	return
@@ -108,7 +87,7 @@ def decodeHeader(input):
 				output+=part[0]
 	return output
 
-# Simple utility to make date/time more readable if possible
+# Simple utility to make date/time more readable if possible and to deal with timezones (relative to the local timezone)
 def mailDateToFormat(inp, format="%Y-%m-%d %H:%M:%S"):
 	try:
 		localTimeZone=datetime.datetime.now(datetime.timezone.utc).astimezone().utcoffset()
@@ -130,8 +109,19 @@ def mailDateToFormat(inp, format="%Y-%m-%d %H:%M:%S"):
 # Main program procedure
 def getAndProcess():
 	# prepare everything
+	everythingOK=True
+
+	# load settings if needed
 	if not SETTINGS_LOADED:
 		loadSettings()
+
+	# stop further processing - there are not any phone number to fax specified!
+	if (PHONE_NUMBER=="") or (PHONE_NUMBER==None):
+		logError("No phone number specified!")
+		everythingOK=False
+		return everythingOK
+
+	# initialize...
 	oldDir=os.getcwd()
 	dir=tempfile.TemporaryDirectory()
 	os.chdir(dir.name)
@@ -141,6 +131,8 @@ def getAndProcess():
 	fileList=[]
 	first=True
 	anything=False
+
+	# and now let's do anything needed...
 	try:
 		# read the message from stdin
 		for line in sys.stdin:
@@ -319,7 +311,7 @@ def getAndProcess():
 				fileList[x]=fN+".tiff"
 
 		# now prepare the faxspool command
-		command=["faxspool",str(PHONE_NUMBER)]
+		command=["faxspool",PHONE_NUMBER]
 
 		for file in fileList:
 			# add only the TIFFs (additional safety condition)
@@ -333,25 +325,36 @@ def getAndProcess():
 			# then send it
 			subprocess.check_output(command)
 			pass
+		else:
+			# if not, let's log it
+			logNotice("There was nothing to fax from message titled "+s_subj+" from "+s_from)
 
+	# I think it's good to log any error (so bugs can be reported)
+	except Exception as e:
+		logError(str(e))
+		everythingOK=False
+
+	# finish everything
 	finally:
-		# finish everything
 		os.chdir(oldDir)
 		dir.cleanup()
 
 	# we're done ;)
-	return
+	return everythingOK
 
 # Autorun part
 if __name__ == "__main__":
 	# Try to get and process incomming message
 	try:
-		consts_relay.setConsts(loadSettings)
-		getAndProcess()
+		loadSettings()
+		if getAndProcess():
+			exit(0)
+		else:
+			exit(1)
 
 	# I think it's much better this way
 	except Exception as e:
-		subprocess.check_output(["logger","relay.py: error: "+str(e)])
+		logError(str(e))
 		exit(1)
 
 	# And finally return 0 exit code
