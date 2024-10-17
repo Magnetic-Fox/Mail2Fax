@@ -138,4 +138,4 @@ As I have mentioned before, I've made much effort to provide here working code a
 Free for personal use. Please do not use these solutions commercially (as they are not so good tested to be intended to). However, if You still like to anyway, please ask me before.
 
 Bartłomiej "Magnetic-Fox" Węgrzyn,
-24th July 2024.
+24th July - 17th October 2024.
