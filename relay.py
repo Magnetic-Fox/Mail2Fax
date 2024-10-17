@@ -23,31 +23,31 @@ import configparser
 
 SETTINGS_LOADED=False
 
-# simple procedure for passing error messages to the system log
+# Simple procedure for passing error messages to the system log
 def logError(errorString):
 	subprocess.check_output(["logger","relay.py: error: "+errorString])
 	return
 
-# simple procedure for passing notices to the system log
+# Simple procedure for passing notices to the system log
 def logNotice(noticeString):
         subprocess.check_output(["logger","relay.py: notice: "+noticeString])
         return
 
-# procedure for loading settings from the INI file
+# Procedure for loading settings from the INI file
 def loadSettings(settingsFile="relay_settings.ini"):
 	global NO_DATA, SENDER, SUBJECT, DATE, PHONE_NUMBER, DELETE_SUBJECT_TRIGGER, DELETE_MESSAGE_TRIGGER, SUBJECT_TRIGGER, MESSAGE_TRIGGER, USE_PLAIN, SETTINGS_LOADED
 
-	# create parser object and try to load the settings file
+	# Create parser object and try to load the settings file
 	config=configparser.ConfigParser()
 	if config.read(settingsFile)==[]:
-		# try finding file in the script's path
+		# Try finding file in the script's path
 		try:
 			settingsFile=os.path.dirname(os.path.realpath(__file__))+"/"+settingsFile
 			config.read(settingsFile)
 		except:
 			pass
 
-	# load settings if possible (or defaults, if not)
+	# Load settings if possible (or defaults, if not)
 	NO_DATA=config.get("strings","no_data",fallback="(no data)").replace('"','')
 	SENDER=config.get("strings","sender",fallback="Sender:  ").replace('"','')
 	SUBJECT=config.get("strings","subject",fallback="Subject: ").replace('"','')
@@ -59,7 +59,7 @@ def loadSettings(settingsFile="relay_settings.ini"):
 	MESSAGE_TRIGGER=config.get("message","message_trigger",fallback="!DISCARD!").replace('"','')
 	USE_PLAIN=config.getboolean("message","use_plain",fallback=True)
 
-	# note that everything has finished
+	# Note that everything has finished
 	SETTINGS_LOADED=True
 
 	return
@@ -74,7 +74,7 @@ class HTMLFilter(html.parser.HTMLParser):
 def decodeHeader(input):
 	output=""
 	if input!=None:
-		# try to decode header info
+		# Try to decode header info
 		parts=email.header.decode_header(input)
 		for part in parts:
 			if part[1]==None:
@@ -108,20 +108,20 @@ def mailDateToFormat(inp, format="%Y-%m-%d %H:%M:%S"):
 
 # Main program procedure
 def getAndProcess():
-	# prepare everything
+	# Prepare everything
 	everythingOK=True
 
-	# load settings if needed
+	# Load settings if needed
 	if not SETTINGS_LOADED:
 		loadSettings()
 
-	# stop further processing - there are not any phone number to fax specified!
+	# Stop further processing - there are not any phone number to fax specified!
 	if (PHONE_NUMBER=="") or (PHONE_NUMBER==None):
 		logError("No phone number specified!")
 		everythingOK=False
 		return everythingOK
 
-	# initialize...
+	# Initialize...
 	oldDir=os.getcwd()
 	dir=tempfile.TemporaryDirectory()
 	os.chdir(dir.name)
@@ -132,22 +132,46 @@ def getAndProcess():
 	first=True
 	anything=False
 
-	# and now let's do anything needed...
+	# And now let's do anything needed...
 	try:
-		# read the message from stdin
+		# Read the message from stdin
 		for line in sys.stdin:
 			buffer+=line
 
-		# import it
+		# Import it
 		message=email.message_from_string(buffer)
 
-		# and preprocess
+		# And preprocess
 		if message.is_multipart():
 			parts=message.get_payload()
 		else:
 			parts=[message]
 
-		# now process all parts of the message
+		# Additional variables
+		plainInt=[]
+		nonPlInt=[]
+		index=0
+
+		# Additional testing
+		for test in parts:
+			if "text" in test.get_content_type():
+				if "plain" in test.get_content_type():
+					plainInt+=[index]
+				else:
+					nonPlInt+=[index]
+			index+=1
+
+		# Remove only if other parts exists (plain and html decision)
+		if USE_PLAIN:
+			if plainInt!=[]:
+				for i in nonPlInt:
+					parts.pop(i)
+		else:
+			if nonPlInt!=[]:
+				for i in plainInt:
+					parts.pop(i)
+
+		# Now process all parts of the message
 		for part in parts:
 			# Unpack text from multipart (plain and html decision)
 			if part.is_multipart():
@@ -156,11 +180,15 @@ def getAndProcess():
 
 				# Non-plain temporary variable
 				ot=None
+
+				# Get all info
 				for micropart in part.get_payload():
 					if micropart.get_content_subtype()=="plain":
 						pl=micropart
 					else:
 						ot=micropart
+
+				# Decide
 				if USE_PLAIN:
 					if pl==None:
 						if ot!=None:
@@ -174,7 +202,7 @@ def getAndProcess():
 					else:
 						part=ot
 
-			# decode all interesting information from headers at this point
+			# Decode all interesting information from headers at this point
 			encoding=part.get_content_charset()
 			if encoding==None:
 				encoding="utf-8"
@@ -192,30 +220,30 @@ def getAndProcess():
 			else:
 				fN, fExt = os.path.splitext(filename)
 
-			# if there is nothing interesting in here, go to the next part
+			# If there is nothing interesting in here, go to the next part
 			if len(data)==0:
 				continue
 
-			# if we're dealing with text part
+			# If we're dealing with text part
 			if part.get_content_maintype()=="text":
-				# get rid of "bytes" type (which is a bit annoying thing in Python)
+				# Get rid of "bytes" type (which is a bit annoying thing in Python)
 				try:
 					data=str(data,encoding)
 				except:
 					data=str(data)
 
-				# convert HTML to text
+				# Convert HTML to text
 				if part.get_content_subtype()=="html":
 					converter=HTMLFilter()
 					converter.feed(data)
 					data=converter.text
 
-				# convert any CR+LF to just LF (big thanks to MariuszK, who found that part missing!)
+				# Convert any CR+LF to just LF (big thanks to MariuszK, who found that part missing!)
 				data=data.replace("\r\n","\n")
 
-				# and this is out first time
+				# And this is out first time
 				if first:
-					# then add some information from the header (if possible)
+					# Then add some information from the header (if possible)
 					s_from=decodeHeader(message["From"])
 					if s_from==None:
 						s_from=NO_DATA
@@ -224,7 +252,7 @@ def getAndProcess():
 						s_subj=NO_DATA
 					elif (s_subj[0:len(SUBJECT_TRIGGER)]==SUBJECT_TRIGGER) and (len(s_subj)>len(SUBJECT_TRIGGER)):
 						if DELETE_SUBJECT_TRIGGER:
-							# well, i think subject trigger part isn't really necessary here ;)
+							# Well, i think subject trigger part isn't really necessary here ;)
 							s_subj=s_subj[len(SUBJECT_TRIGGER):]
 					s_date=mailDateToFormat(decodeHeader(message["Date"]))
 					if s_date==None:
@@ -235,98 +263,98 @@ def getAndProcess():
 					data=firstData+data
 					first=False
 
-				# is message triggered?
+				# Is message triggered?
 				messageTriggered=MESSAGE_TRIGGER in data
 				if not DELETE_MESSAGE_TRIGGER:
 					messageTriggered=False
 
-				# save text to temporary file
+				# Save text to temporary file
 				if not messageTriggered:
 					outFile=str(counter)+".txt"
 					fl=open(outFile,"w")
 					fl.write(data)
 					fl.close()
 
-			# or maybe we got an image?
+			# Or maybe we got an image?
 			elif part.get_content_maintype()=="image":
 				if(fExt!=""):
 					outFile=str(counter)+fExt
 				else:
 					outFile=str(counter)+".jpg"
 				try:
-					# save it too
+					# Save it too
 					fl=open(outFile,"wb")
 					fl.write(data)
 					fl.close()
 				except:
-					# or just ignore if mail has wrong content-type info
+					# Or just ignore if mail has wrong content-type info
 					pass
 
-			# or something else?
+			# Or something else?
 			else:
 				outFile=""
-				# discard it (it may be vulnerable)
+				# Discard it (it may be vulnerable)
 
 			counter+=1
 			if outFile!="":
 				fileList+=[outFile]
 
-		# now, process all the saved files
+		# Now, process all the saved files
 		for x in range(len(fileList)):
 			fN, fExt = os.path.splitext(fileList[x])
 			if fExt==".txt":
-				# convert text files to G3 TIFFs
+				# Convert text files to G3 TIFFs
 				paps=subprocess.Popen(["paps","--top-margin=6","--font=Monospace 10",fileList[x]], stdout=subprocess.PIPE)
 				subprocess.check_output(["gs","-sDEVICE=tiffg3","-sOutputFile="+fN+".tiff","-dBATCH","-dNOPAUSE","-dSAFER","-dQUIET","-"], stdin=paps.stdout)
 				paps.wait()
 
-				# update the file name on the list
+				# Update the file name on the list
 				fileList[x]=fN+".tiff"
 
-				# and apply the cutter (to waste less paper on a fax machine)
+				# And apply the cutter (to waste less paper on a fax machine)
 				cutter.loadAndCrop(fileList[x])
 			else:
-				# temporary variable
+				# Temporary variable
 				rotate=False
 
-				# test if image is landscape or portrait
+				# Test if image is landscape or portrait
 				img=PIL.Image.open(fileList[x])
 				width,height=img.size
 				img.close()
 				rotate=width>height
 
-				# prepare command
+				# Prepare command
 				command=["convert",fileList[x]]
 
-				# rotate image if necessary
+				# Rotate image if necessary
 				if rotate:
 					command+=["-rotate","90"]
 
 				command+=["-resize","1664>","-background","white","-gravity","northwest","-splice","32x0","-background","white","-gravity","northeast","-splice","32x0",fN+".tiff"]
 
-				# convert images to TIFFs with auto-size and auto-margin
+				# Convert images to TIFFs with auto-size and auto-margin
 				subprocess.check_output(command)
 
-				# update the file name on the list
+				# Update the file name on the list
 				fileList[x]=fN+".tiff"
 
-		# now prepare the faxspool command
+		# Now prepare the faxspool command
 		command=["faxspool",PHONE_NUMBER]
 
 		for file in fileList:
-			# add only the TIFFs (additional safety condition)
+			# Add only the TIFFs (additional safety condition)
 			if ".tiff" in file:
 				if not anything:
 					anything=True
 				command+=[file]
 
-		# if we got anything that can be sent
+		# If we got anything that can be sent
 		if anything:
-			# then send it
+			# Then send it
 			subprocess.check_output(command)
 			pass
 		else:
-			# if not, let's log it
+			# If not, let's log it
 			logNotice("There was nothing to fax from message titled "+s_subj+" from "+s_from)
 
 	# I think it's good to log any error (so bugs can be reported)
@@ -334,12 +362,12 @@ def getAndProcess():
 		logError(str(e))
 		everythingOK=False
 
-	# finish everything
+	# Finish everything
 	finally:
 		os.chdir(oldDir)
 		dir.cleanup()
 
-	# we're done ;)
+	# We're done ;)
 	return everythingOK
 
 # Autorun part
