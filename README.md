@@ -23,8 +23,9 @@ Depending on how would You like to use this solution, You may need `fetchmail` o
 
 ## Important note before going any further
 
-The main script uses defaults, such as phone number to call, and a subject trigger to be removed from the actual message's subject before converting the text to image. It is not necessary to change them here.
-You should deal with `consts_relay.py` file, which is intended for setting constants. Values provided in this file are considered default and are intended to be changed to conform Your own needs.
+**Settings for this relay are now stored in the `relay_settings.ini` file**, which is provided with sample values here. They are in Polish, but hope it's self-explanatory (take a look at the keys to get meaning of the values).
+You have to change at least the phone number to desired one.
+Please also note that the **default message trigger has been changed to just `!DISCARD!`** which is much easier to remember and looks far better than its previous version (`?????NOTEXT?????`).
 
 ## How it works?
 
