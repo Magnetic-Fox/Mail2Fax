@@ -2,7 +2,7 @@
 
 # Simple E-Mail to Fax Relay Utility for Procmail
 #
-# by Magnetic-Fox, 13-24.07.2024, 19-25.08.2024, 16-17.10.2024
+# by Magnetic-Fox, 13-24.07.2024, 19-25.08.2024, 16-17.10.2024, 29.10.2024
 #
 # (C)2024 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -87,27 +87,15 @@ def decodeHeader(input):
 				output+=part[0]
 	return output
 
-# Simple utility to make date/time more readable if possible and to deal with timezones (relative to the local timezone)
+# Much simplier and better utility to make date/time more readable and to deal with timezones if possible (relatively to the local timezone)
 def mailDateToFormat(inp, format="%Y-%m-%d %H:%M:%S"):
 	try:
-		localTimeZone=datetime.datetime.now(datetime.timezone.utc).astimezone().utcoffset()
-		temp=dateutil.parser.parse(inp)
-		offset=temp.utcoffset()
-		temp=temp.replace(tzinfo=None)
-		if offset==None:
-			if localTimeZone!=None:
-				temp+=localTimeZone
-		else:
-			if localTimeZone==None:
-				temp-=offset
-			else:
-				temp+=(localTimeZone-offset)
-		return temp.strftime(format)
+		return dateutil.parser.parse(inp).astimezone().strftime(format)
 	except:
 		return inp
 
 # Main program procedure
-def getAndProcess():
+def getAndProcess(passBuffer=None):
 	# Prepare everything
 	everythingOK=True
 
@@ -134,9 +122,14 @@ def getAndProcess():
 
 	# And now let's do anything needed...
 	try:
-		# Read the message from stdin
-		for line in sys.stdin:
-			buffer+=line
+		# If function was executed without buffer parameter...
+		if passBuffer==None:
+			# Read the message from stdin
+			for line in sys.stdin:
+				buffer+=line
+		else:
+			# Read the message from provided data
+			buffer=passBuffer
 
 		# Import it
 		message=email.message_from_string(buffer)
@@ -164,11 +157,11 @@ def getAndProcess():
 		# Remove only if other parts exists (plain and html decision)
 		if USE_PLAIN:
 			if plainInt!=[]:
-				for i in nonPlInt:
+				for i in reversed(nonPlInt):
 					parts.pop(i)
 		else:
 			if nonPlInt!=[]:
-				for i in plainInt:
+				for i in reversed(plainInt):
 					parts.pop(i)
 
 		# Now process all parts of the message
