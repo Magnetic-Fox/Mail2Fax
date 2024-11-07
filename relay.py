@@ -2,10 +2,11 @@
 
 # Simple E-Mail to Fax Relay Utility for Procmail
 #
-# by Magnetic-Fox, 13-24.07.2024, 19-25.08.2024, 16-17.10.2024, 29.10.2024
+# by Magnetic-Fox, 13.07.2024 - 07.11.2024
 #
 # (C)2024 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
+# Imports...
 import tempfile
 import email
 import email.header
@@ -21,6 +22,7 @@ import cutter
 import PIL.Image
 import configparser
 
+# Main global variable
 SETTINGS_LOADED=False
 
 # Simple procedure for passing error messages to the system log
@@ -85,6 +87,8 @@ def decodeHeader(input):
 				output+=str(part[0],encoding)
 			except:
 				output+=part[0]
+	if output=="":
+		return None
 	return output
 
 # Much simplier and better utility to make date/time more readable and to deal with timezones if possible (relatively to the local timezone)
@@ -93,6 +97,45 @@ def mailDateToFormat(inp, format="%Y-%m-%d %H:%M:%S"):
 		return dateutil.parser.parse(inp).astimezone().strftime(format)
 	except:
 		return inp
+
+# Try..Except version of decodeHeader() function with returning NO_DATA on empty strings
+def tryDecodeHeader(header):
+	try:
+		return decodeHeader(header)
+	except:
+		return None
+
+# Function for gathering "From", "Subject" and "Date" headers from message
+def getMailInfo(message):
+	# Get mail sender
+	s_from=tryDecodeHeader(message["From"])
+	if s_from==None:
+		s_from=NO_DATA
+
+	# Get mail subject
+	s_subj=tryDecodeHeader(message["Subject"])
+	if s_subj==None:
+		s_subj=NO_DATA
+	elif (s_subj[0:len(SUBJECT_TRIGGER)]==SUBJECT_TRIGGER) and (len(s_subj)>len(SUBJECT_TRIGGER)):
+		if DELETE_SUBJECT_TRIGGER:
+			s_subj=s_subj[len(SUBJECT_TRIGGER):]
+
+	# Get mail date
+	s_date=mailDateToFormat(tryDecodeHeader(message["Date"]))
+	if s_date==None:
+		s_date=NO_DATA
+
+	# Return information
+	return s_from, s_subj, s_date
+
+# Function for preparing header for the text file
+def prepareTextHeader(s_from, s_subj, s_date, addReturns=True):
+	textHeader =SENDER+s_from+"\n"
+	textHeader+=SUBJECT+s_subj+"\n"
+	textHeader+=DATE+s_date
+	if addReturns:
+		textHeader+="\n\n"
+	return textHeader
 
 # Main program procedure
 def getAndProcess(passBuffer=None):
@@ -119,6 +162,8 @@ def getAndProcess(passBuffer=None):
 	fileList=[]
 	first=True
 	anything=False
+	wasTextInMessage=False
+	nothingUseful=False
 
 	# And now let's do anything needed...
 	try:
@@ -133,6 +178,9 @@ def getAndProcess(passBuffer=None):
 
 		# Import it
 		message=email.message_from_string(buffer)
+
+		# Get message information
+		s_from,s_subj,s_date=getMailInfo(message)
 
 		# And preprocess
 		if message.is_multipart():
@@ -206,12 +254,13 @@ def getAndProcess(passBuffer=None):
 				data=email.quoprimime.body_decode(part.get_payload()).encode("latin1").decode(encoding)
 			else:
 				data=part.get_payload()
+
 			filename=part.get_filename()
 			if filename==None:
 				fN=""
 				fExt=""
 			else:
-				fN, fExt = os.path.splitext(filename)
+				fN,fExt=os.path.splitext(filename)
 
 			# If there is nothing interesting in here, go to the next part
 			if len(data)==0:
@@ -231,29 +280,19 @@ def getAndProcess(passBuffer=None):
 					converter.feed(data)
 					data=converter.text
 
-				# Convert any CR+LF to just LF (big thanks to MariuszK, who found that part missing!)
+				# Convert any CR+LF to just LF (big thanks to MariuszK, who accidentally found that part missing!)
 				data=data.replace("\r\n","\n")
+
+				# Remove any leading and trailing returns (helps not to waste fax machine's recording paper)
+				data=data.lstrip('\n').rstrip('\n')
 
 				# And this is out first time
 				if first:
 					# Then add some information from the header (if possible)
-					s_from=decodeHeader(message["From"])
-					if s_from==None:
-						s_from=NO_DATA
-					s_subj=decodeHeader(message["Subject"])
-					if s_subj==None:
-						s_subj=NO_DATA
-					elif (s_subj[0:len(SUBJECT_TRIGGER)]==SUBJECT_TRIGGER) and (len(s_subj)>len(SUBJECT_TRIGGER)):
-						if DELETE_SUBJECT_TRIGGER:
-							# Well, i think subject trigger part isn't really necessary here ;)
-							s_subj=s_subj[len(SUBJECT_TRIGGER):]
-					s_date=mailDateToFormat(decodeHeader(message["Date"]))
-					if s_date==None:
-						s_date=NO_DATA
-					firstData =SENDER+s_from+"\n"
-					firstData+=SUBJECT+s_subj+"\n"
-					firstData+=DATE+s_date+"\n\n"
-					data=firstData+data
+					if len(data)==0:
+						data=prepareTextHeader(s_from,s_subj,s_date,False)
+					else:
+						data=prepareTextHeader(s_from,s_subj,s_date)+data
 					first=False
 
 				# Is message triggered?
@@ -264,37 +303,74 @@ def getAndProcess(passBuffer=None):
 				# Save text to temporary file
 				if not messageTriggered:
 					outFile=str(counter)+".txt"
-					fl=open(outFile,"w")
-					fl.write(data)
-					fl.close()
+					try:
+						fl=open(outFile,"w")
+						fl.write(data)
+						fl.close()
+					except:
+						outFile=""
+						logNotice('Saving text from message "'+s_subj+'" from "'+s_from+'" was not possible')
+
+				# Set information that message had text part
+				wasTextInMessage=True
 
 			# Or maybe we got an image?
 			elif part.get_content_maintype()=="image":
 				if(fExt!=""):
 					outFile=str(counter)+fExt
 				else:
+					# Let's say JPG is a default extension if it is unknown
 					outFile=str(counter)+".jpg"
 				try:
 					# Save it too
-					fl=open(outFile,"wb")
-					fl.write(data)
-					fl.close()
+					if type(data)==str:
+						# But if the data type claims it's a text, save it as a text file (maybe we've got a message with wrong content-type?)
+						outFile=str(counter)+".txt"
+						fl=open(outFile,"w")
+						fl.write(data)
+						fl.close()
+						logNotice('Saved image part of the message "'+s_subj+'" from "'+s_from+'" as a text file (probably wrong content type in the message)')
+					else:
+						# Save data if that's really data
+						fl=open(outFile,"wb")
+						fl.write(data)
+						fl.close()
 				except:
-					# Or just ignore if mail has wrong content-type info
-					pass
+					outFile=""
+					logNotice('Saving image from message "'+s_subj+'" from "'+s_from+'" was not possible')
 
 			# Or something else?
 			else:
+				# Discard it (as it may be vulnerable)
 				outFile=""
-				# Discard it (it may be vulnerable)
+				logNotice('Discarded an attachment from message "'+s_subj+'" from "'+s_from+'"')
 
+			# Increase the file counter and add file to the list (if there is any)
 			counter+=1
 			if outFile!="":
 				fileList+=[outFile]
 
+		# If message had no text part, then add just the header
+		if not wasTextInMessage:
+			try:
+				# Yeah, a little ugly condition (comparing strings instead of making own, more sophisticated class for variables...)
+				# However, testing if there are any files in the list and if we got any usable information at this point
+				if (fileList==[]) and (s_from==NO_DATA) and (s_subj==NO_DATA) and (s_date==NO_DATA):
+					logNotice("There was nothing to fax from the message")
+					nothingUseful=True
+				else:
+					# Write '0.txt' file containing just headers
+					fl=open("0.txt","w")
+					fl.write(prepareTextHeader(s_from,s_subj,s_date,False))
+					fl.close()
+					# And add it on the very beginning of the file list
+					fileList=["0.txt"]+fileList
+			except:
+				logNotice('Saving headers from message "'+s_subj+'" from "'+s_from+'" was not possible')
+
 		# Now, process all the saved files
 		for x in range(len(fileList)):
-			fN, fExt = os.path.splitext(fileList[x])
+			fN,fExt=os.path.splitext(fileList[x])
 			if fExt==".txt":
 				# Convert text files to G3 TIFFs
 				paps=subprocess.Popen(["paps","--top-margin=6","--font=Monospace 10",fileList[x]], stdout=subprocess.PIPE)
@@ -304,32 +380,38 @@ def getAndProcess(passBuffer=None):
 				# Update the file name on the list
 				fileList[x]=fN+".tiff"
 
-				# And apply the cutter (to waste less paper on a fax machine)
+				# And apply the cutter (to prevent wasting paper on a fax machine)
 				cutter.loadAndCrop(fileList[x])
 			else:
-				# Temporary variable
-				rotate=False
+				# Try to convert an image (if possible)
+				try:
+					# Temporary variable
+					rotate=False
 
-				# Test if image is landscape or portrait
-				img=PIL.Image.open(fileList[x])
-				width,height=img.size
-				img.close()
-				rotate=width>height
+					# Test if image is landscape or portrait
+					img=PIL.Image.open(fileList[x])
+					width,height=img.size
+					img.close()
+					rotate=width>height
 
-				# Prepare command
-				command=["convert",fileList[x]]
+					# Prepare command
+					command=["convert",fileList[x]]
 
-				# Rotate image if necessary
-				if rotate:
-					command+=["-rotate","90"]
+					# Rotate image if necessary
+					if rotate:
+						command+=["-rotate","90"]
 
-				command+=["-resize","1664>","-background","white","-gravity","northwest","-splice","32x0","-background","white","-gravity","northeast","-splice","32x0",fN+".tiff"]
+					command+=["-resize","1664>","-background","white","-gravity","northwest","-splice","32x0","-background","white","-gravity","northeast","-splice","32x0",fN+".tiff"]
 
-				# Convert images to TIFFs with auto-size and auto-margin
-				subprocess.check_output(command)
+					# Convert images to TIFFs with auto-size and auto-margin
+					subprocess.check_output(command)
 
-				# Update the file name on the list
-				fileList[x]=fN+".tiff"
+					# Update the file name on the list
+					fileList[x]=fN+".tiff"
+
+				# If reading an image isn't possible, skip it, but leave a notice in log
+				except:
+					logNotice('Skipped corrupted image file from the message titled "'+s_subj+'" from "'+s_from+'"')
 
 		# Now prepare the faxspool command
 		command=["faxspool",PHONE_NUMBER]
@@ -345,10 +427,10 @@ def getAndProcess(passBuffer=None):
 		if anything:
 			# Then send it
 			subprocess.check_output(command)
-			pass
 		else:
 			# If not, let's log it
-			logNotice("There was nothing to fax from message titled "+s_subj+" from "+s_from)
+			if not nothingUseful:
+				logNotice('There was nothing to fax from message titled "'+s_subj+'" from "'+s_from+'"')
 
 	# I think it's good to log any error (so bugs can be reported)
 	except Exception as e:
