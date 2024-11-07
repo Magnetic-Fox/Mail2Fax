@@ -21,6 +21,7 @@ import datetime
 import cutter
 import PIL.Image
 import configparser
+import io
 
 # Main global variable
 SETTINGS_LOADED=False
@@ -87,8 +88,12 @@ def decodeHeader(input):
 				output+=str(part[0],encoding)
 			except:
 				output+=part[0]
+
+	# If output is nothing the set it to None
 	if output=="":
-		return None
+		output=None
+
+	# Return output
 	return output
 
 # Much simplier and better utility to make date/time more readable and to deal with timezones if possible (relatively to the local timezone)
@@ -133,9 +138,89 @@ def prepareTextHeader(s_from, s_subj, s_date, addReturns=True):
 	textHeader =SENDER+s_from+"\n"
 	textHeader+=SUBJECT+s_subj+"\n"
 	textHeader+=DATE+s_date
+
 	if addReturns:
 		textHeader+="\n\n"
+
 	return textHeader
+
+# Procedure grouping plain-text and non-plain-text parts of the message (indexed output)
+def groupTypesIndexes(parts, plainInt, nonPlInt):
+	index=0
+	for test in parts:
+		if "text" in test.get_content_type():
+			if "plain" in test.get_content_type():
+				plainInt+=[index]
+			else:
+				nonPlInt+=[index]
+		index+=1
+	return
+
+# Procedure removing indexes depending on "use plain text" setting
+def plainAndHTMLDecision(parts, plainInt, nonPlInt):
+	if USE_PLAIN:
+		if plainInt!=[]:
+			for i in reversed(nonPlInt):
+				parts.pop(i)
+	else:
+		if nonPlInt!=[]:
+			for i in reversed(plainInt):
+				parts.pop(i)
+	return
+
+# Binding procedure for plain or non-plain decision
+def decidePlainOrHTML(parts):
+	plainInt=[]
+	nonPlInt=[]
+	groupTypesIndexes(parts,plainInt,nonPlInt)
+	plainAndHTMLDecision(parts,plainInt,nonPlInt)
+	return
+
+# Very simple get image format (if possible) utility
+def quickImageFormat(data):
+	try:
+		return PIL.Image.open(io.BytesIO(data)).format.lower()
+	except:
+		return ""
+
+# Very quick and simple "if-we-have-an-image" test
+def quickImageTest(data):
+	return quickImageFormat(data)!=""
+
+# One function to save data to make code more readable
+def saveMessagePart(binary, outFile, data, counter, s_subj, s_from):
+	# Check if mode is correct according to the data
+	if binary:
+		# Change mode to non-binary if data is string
+		if type(data)==str:
+			binary=False
+			outFile=str(counter)+".txt"
+			# Log this change
+			logNotice('Going to save image part of the message "'+s_subj+'" from "'+s_from+'" as a text file (probably wrong content type in the message)')
+	else:
+		# Change mode to binary if data is binary
+		if type(data)==bytes:
+			binary=True
+			if quickImageFormat(data)=="":
+				# Let's say JPG is a default extension in such situation (should be harmless)
+				outFile=str(counter)+".jpg"
+			else:
+				outFile=str(counter)+"."+quickImageFormat(data)
+			# Log this change
+			logNotice('Going to save text part of the message "'+s_subj+'" from "'+s_from+'" as an image file (probably wrong content type in the message)')
+
+	# Open file properly
+	if binary:
+		fl=open(outFile,"wb")
+	else:
+		fl=open(outFile,"w")
+
+	# Write data and close file
+	fl.write(data)
+	fl.close()
+
+	# Finish
+	return outFile
 
 # Main program procedure
 def getAndProcess(passBuffer=None):
@@ -188,66 +273,28 @@ def getAndProcess(passBuffer=None):
 		else:
 			parts=[message]
 
-		# Additional variables
-		plainInt=[]
-		nonPlInt=[]
-		index=0
-
-		# Additional testing
-		for test in parts:
-			if "text" in test.get_content_type():
-				if "plain" in test.get_content_type():
-					plainInt+=[index]
-				else:
-					nonPlInt+=[index]
-			index+=1
-
-		# Remove only if other parts exists (plain and html decision)
-		if USE_PLAIN:
-			if plainInt!=[]:
-				for i in reversed(nonPlInt):
-					parts.pop(i)
-		else:
-			if nonPlInt!=[]:
-				for i in reversed(plainInt):
-					parts.pop(i)
+		# First plain or non-plain decision
+		decidePlainOrHTML(parts)
 
 		# Now process all parts of the message
 		for part in parts:
 			# Unpack text from multipart (plain and html decision)
 			if part.is_multipart():
-				# Plain temporary variable
-				pl=None
+				# Second plain or non-plain decision
+				parts2=part.get_payload()
+				decidePlainOrHTML(parts2)
 
-				# Non-plain temporary variable
-				ot=None
-
-				# Get all info
-				for micropart in part.get_payload():
-					if micropart.get_content_subtype()=="plain":
-						pl=micropart
-					else:
-						ot=micropart
-
-				# Decide
-				if USE_PLAIN:
-					if pl==None:
-						if ot!=None:
-							part=ot
-					else:
-						part=pl
-				else:
-					if ot==None:
-						if pl!=None:
-							part=pl
-					else:
-						part=ot
+				# Should not be more parts on the list at this point, so simply...
+				part=parts2[0]
 
 			# Decode all interesting information from headers at this point
 			encoding=part.get_content_charset()
+
+			# UTF-8 will be default
 			if encoding==None:
 				encoding="utf-8"
 
+			# Decode message (Base64 or Quoted-Printable)
 			if part["Content-Transfer-Encoding"]=="base64":
 				data=base64.b64decode(part.get_payload())
 			elif part["Content-Transfer-Encoding"]=="quoted-printable":
@@ -255,6 +302,7 @@ def getAndProcess(passBuffer=None):
 			else:
 				data=part.get_payload()
 
+			# Get file name properties (to extract extension)
 			filename=part.get_filename()
 			if filename==None:
 				fN=""
@@ -266,8 +314,15 @@ def getAndProcess(passBuffer=None):
 			if len(data)==0:
 				continue
 
+			# Let's store it in its own variable to make some other tests
+			contentMainType=part.get_content_maintype()
+
+			# For example, test if text/plain isn't in fact an image...
+			if (type(data)==bytes) and (quickImageTest(data)):
+				contentMainType="image"
+
 			# If we're dealing with text part
-			if part.get_content_maintype()=="text":
+			if contentMainType=="text":
 				# Get rid of "bytes" type (which is a bit annoying thing in Python)
 				try:
 					data=str(data,encoding)
@@ -304,9 +359,7 @@ def getAndProcess(passBuffer=None):
 				if not messageTriggered:
 					outFile=str(counter)+".txt"
 					try:
-						fl=open(outFile,"w")
-						fl.write(data)
-						fl.close()
+						outFile=saveMessagePart(False, outFile, data, counter, s_subj, s_from)
 					except:
 						outFile=""
 						logNotice('Saving text from message "'+s_subj+'" from "'+s_from+'" was not possible')
@@ -315,26 +368,24 @@ def getAndProcess(passBuffer=None):
 				wasTextInMessage=True
 
 			# Or maybe we got an image?
-			elif part.get_content_maintype()=="image":
+			elif contentMainType=="image":
 				if(fExt!=""):
+					# Additional test if attachment has correct extension
+					if fExt.lower()==".txt":
+						if quickImageFormat(data)=="":
+							# Let's say JPG is a default extension if it is unknown
+							fExt=".jpg"
+						else:
+							fExt="."+quickImageFormat(data)
 					outFile=str(counter)+fExt
+				elif(quickImageFormat(data)!=""):
+					fExt="."+quickImageFormat(data)
 				else:
-					# Let's say JPG is a default extension if it is unknown
+					# Default...
 					outFile=str(counter)+".jpg"
 				try:
 					# Save it too
-					if type(data)==str:
-						# But if the data type claims it's a text, save it as a text file (maybe we've got a message with wrong content-type?)
-						outFile=str(counter)+".txt"
-						fl=open(outFile,"w")
-						fl.write(data)
-						fl.close()
-						logNotice('Saved image part of the message "'+s_subj+'" from "'+s_from+'" as a text file (probably wrong content type in the message)')
-					else:
-						# Save data if that's really data
-						fl=open(outFile,"wb")
-						fl.write(data)
-						fl.close()
+					outFile=saveMessagePart(True, outFile, data, counter, s_subj, s_from)
 				except:
 					outFile=""
 					logNotice('Saving image from message "'+s_subj+'" from "'+s_from+'" was not possible')
@@ -359,12 +410,9 @@ def getAndProcess(passBuffer=None):
 					logNotice("There was nothing to fax from the message")
 					nothingUseful=True
 				else:
-					# Write '0.txt' file containing just headers
-					fl=open("0.txt","w")
-					fl.write(prepareTextHeader(s_from,s_subj,s_date,False))
-					fl.close()
-					# And add it on the very beginning of the file list
-					fileList=["0.txt"]+fileList
+					# Write '0.txt' file containing just headers and add it at the very beginning of the file list
+					outFile=saveMessagePart(False, "0.txt", prepareTextHeader(s_from,s_subj,s_date,False), 0, s_subj, s_from)
+					fileList=[outFile]+fileList
 			except:
 				logNotice('Saving headers from message "'+s_subj+'" from "'+s_from+'" was not possible')
 
