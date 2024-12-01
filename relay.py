@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 
+################################################################################
+#
 # Simple E-Mail to Fax Relay Utility for Procmail
 #
-# by Magnetic-Fox, 13.07.2024 - 07.11.2024
+# by Magnetic-Fox, 13.07.2024 - 01.12.2024
 #
 # (C)2024 Bartłomiej "Magnetic-Fox" Węgrzyn!
+#
+################################################################################
 
 # Imports...
 import tempfile
@@ -23,22 +27,100 @@ import PIL.Image
 import configparser
 import io
 
-# Main global variable
-SETTINGS_LOADED=False
+################################################################################
 
+# Main constants
+# Logger texts constants
+LOGGER_ERROR=		"relay.py: error: "
+LOGGER_NOTICE=		"relay.py: notice: "
+
+# Default settings constants
+SETTINGS_NO_DATA=	"(no data)"
+SETTINGS_SENDER=	"Sender:  "
+SETTINGS_SUBJECT=	"Subject: "
+SETTINGS_DATE=		"Date:    "
+SETTINGS_PHONE_NUMBER=	""
+SETTINGS_DEL_SUB_TRIG=	True
+SETTINGS_DEL_MESS_TRIG=	True
+SETTINGS_SUBJECT_TRIG=	"[FAX] "
+SETTINGS_MESSAGE_TRIG=	"!DISCARD!"
+SETTINGS_USE_PLAIN=	True
+
+# String table
+# Image saving
+STR_SAVE_IMAGE_1=	'Going to save image part of the message "'
+STR_SAVE_IMAGE_2=	'" from "'
+STR_SAVE_IMAGE_3=	'" as a text file (probably wrong content type in the message)'
+
+# Text saving
+STR_SAVE_TEXT_1=	'Going to save text part of the message "'
+# same value as STR_SAVE_IMAGE_2
+STR_SAVE_TEXT_2=	STR_SAVE_IMAGE_2
+STR_SAVE_TEXT_3=	'" as an image file (probably wrong content type in the message)'
+
+# No phone number
+STR_NO_PHONE_NUMBER=	"No phone number specified!"
+
+# Saving text error
+STR_SAVE_TEXT_ERROR_1=	'Saving text from message "'
+# same value as STR_SAVE_IMAGE_2
+STR_SAVE_TEXT_ERROR_2=	STR_SAVE_IMAGE_2
+STR_SAVE_TEXT_ERROR_3=	'" was not possible'
+
+# Saving image error
+STR_SAVE_IMAGE_ERROR_1=	'Saving image from message "'
+# same value as STR_SAVE_IMAGE_2 and STR_SAVE_TEXT_ERROR_3
+STR_SAVE_IMAGE_ERROR_2=	STR_SAVE_IMAGE_2
+STR_SAVE_IMAGE_ERROR_3=	STR_SAVE_TEXT_ERROR_3
+
+# Attachment discarded
+STR_ATTACHMENT_DISC_1=	'Discarded an attachment from message "'
+# same value as STR_SAVE_IMAGE_2
+STR_ATTACHMENT_DISC_2=	STR_SAVE_IMAGE_2
+STR_ATTACHMENT_DISC_3=	'"'
+
+# Nothing to fax error
+STR_NOTHING_TO_FAX=	"There was nothing to fax from the message"
+
+# Saving headers error
+STR_HEAD_SAVE_ERROR_1=	'Saving headers from message "'
+# same value as STR_SAVE_IMAGE_2 and STR_SAVE_TEXT_ERROR_3
+STR_HEAD_SAVE_ERROR_2=	STR_SAVE_IMAGE_2
+STR_HEAD_SAVE_ERROR_3=	STR_SAVE_TEXT_ERROR_3
+
+# Corrupted image error
+STR_IMAGE_CORR_ERR_1=	'Skipped corrupted image file from the message titled "'
+# same value as STR_SAVE_IMAGE_2 and STR_ATTACHMENT_DISC_3
+STR_IMAGE_CORR_ERR_2=	STR_SAVE_IMAGE_2
+STR_IMAGE_CORR_ERR_3=	STR_ATTACHMENT_DISC_3
+
+# More informative "nothing to fax" error
+STR_NOTHING_TO_FAX_I_1=	'There was nothing to fax from message titled "'
+# same value as STR_SAVE_IMAGE_2 and STR_ATTACHMENT_DISC_3
+STR_NOTHING_TO_FAX_I_2=	STR_SAVE_IMAGE_2
+STR_NOTHING_TO_FAX_I_3=	STR_ATTACHMENT_DISC_3
+
+################################################################################
+
+# Main global variable
+settingsLoaded=False
+
+################################################################################
+
+# Functions...
 # Simple procedure for passing error messages to the system log
 def logError(errorString):
-	subprocess.check_output(["logger","relay.py: error: "+errorString])
+	subprocess.check_output(["logger",LOGGER_ERROR+errorString])
 	return
 
 # Simple procedure for passing notices to the system log
 def logNotice(noticeString):
-        subprocess.check_output(["logger","relay.py: notice: "+noticeString])
+        subprocess.check_output(["logger",LOGGER_NOTICE+noticeString])
         return
 
 # Procedure for loading settings from the INI file
 def loadSettings(settingsFile="relay_settings.ini"):
-	global NO_DATA, SENDER, SUBJECT, DATE, PHONE_NUMBER, DELETE_SUBJECT_TRIGGER, DELETE_MESSAGE_TRIGGER, SUBJECT_TRIGGER, MESSAGE_TRIGGER, USE_PLAIN, SETTINGS_LOADED
+	global NO_DATA, SENDER, SUBJECT, DATE, PHONE_NUMBER, DELETE_SUBJECT_TRIGGER, DELETE_MESSAGE_TRIGGER, SUBJECT_TRIGGER, MESSAGE_TRIGGER, USE_PLAIN, settingsLoaded
 
 	# Create parser object and try to load the settings file
 	config=configparser.ConfigParser()
@@ -51,19 +133,19 @@ def loadSettings(settingsFile="relay_settings.ini"):
 			pass
 
 	# Load settings if possible (or defaults, if not)
-	NO_DATA=config.get("strings","no_data",fallback="(no data)").replace('"','')
-	SENDER=config.get("strings","sender",fallback="Sender:  ").replace('"','')
-	SUBJECT=config.get("strings","subject",fallback="Subject: ").replace('"','')
-	DATE=config.get("strings","date",fallback="Date:    ").replace('"','')
-	PHONE_NUMBER=config.get("phone","number",fallback="").replace('"','')
-	DELETE_SUBJECT_TRIGGER=config.getboolean("message","delete_subject_trigger",fallback=True)
-	DELETE_MESSAGE_TRIGGER=config.getboolean("message","delete_message_trigger",fallback=True)
-	SUBJECT_TRIGGER=config.get("message","subject_trigger",fallback="[FAX] ").replace('"','')
-	MESSAGE_TRIGGER=config.get("message","message_trigger",fallback="!DISCARD!").replace('"','')
-	USE_PLAIN=config.getboolean("message","use_plain",fallback=True)
+	NO_DATA=config.get("strings","no_data",fallback=SETTINGS_NO_DATA).replace('"','')
+	SENDER=config.get("strings","sender",fallback=SETTINGS_SENDER).replace('"','')
+	SUBJECT=config.get("strings","subject",fallback=SETTINGS_SUBJECT).replace('"','')
+	DATE=config.get("strings","date",fallback=SETTINGS_DATE).replace('"','')
+	PHONE_NUMBER=config.get("phone","number",fallback=SETTINGS_PHONE_NUMBER).replace('"','')
+	DELETE_SUBJECT_TRIGGER=config.getboolean("message","delete_subject_trigger",fallback=SETTINGS_DEL_SUB_TRIG)
+	DELETE_MESSAGE_TRIGGER=config.getboolean("message","delete_message_trigger",fallback=SETTINGS_DEL_MESS_TRIG)
+	SUBJECT_TRIGGER=config.get("message","subject_trigger",fallback=SETTINGS_SUBJECT_TRIG).replace('"','')
+	MESSAGE_TRIGGER=config.get("message","message_trigger",fallback=SETTINGS_MESSAGE_TRIG).replace('"','')
+	USE_PLAIN=config.getboolean("message","use_plain",fallback=SETTINGS_USE_PLAIN)
 
 	# Note that everything has finished
-	SETTINGS_LOADED=True
+	settingsLoaded=True
 
 	return
 
@@ -196,7 +278,7 @@ def saveMessagePart(binary, outFile, data, counter, s_subj, s_from):
 			binary=False
 			outFile=str(counter)+".txt"
 			# Log this change
-			logNotice('Going to save image part of the message "'+s_subj+'" from "'+s_from+'" as a text file (probably wrong content type in the message)')
+			logNotice(STR_SAVE_IMAGE_1+s_subj+STR_SAVE_IMAGE_2+s_from+STR_SAVE_IMAGE_3)
 	else:
 		# Change mode to binary if data is binary
 		if type(data)==bytes:
@@ -207,7 +289,7 @@ def saveMessagePart(binary, outFile, data, counter, s_subj, s_from):
 			else:
 				outFile=str(counter)+"."+quickImageFormat(data)
 			# Log this change
-			logNotice('Going to save text part of the message "'+s_subj+'" from "'+s_from+'" as an image file (probably wrong content type in the message)')
+			logNotice(STR_SAVE_TEXT_1+s_subj+STR_SAVE_TEXT_2+s_from+STR_SAVE_TEXT_3)
 
 	# Open file properly
 	if binary:
@@ -228,12 +310,12 @@ def getAndProcess(passBuffer=None):
 	everythingOK=True
 
 	# Load settings if needed
-	if not SETTINGS_LOADED:
+	if not settingsLoaded:
 		loadSettings()
 
 	# Stop further processing - there are not any phone number to fax specified!
 	if (PHONE_NUMBER=="") or (PHONE_NUMBER==None):
-		logError("No phone number specified!")
+		logError(STR_NO_PHONE_NUMBER)
 		everythingOK=False
 		return everythingOK
 
@@ -362,7 +444,7 @@ def getAndProcess(passBuffer=None):
 						outFile=saveMessagePart(False, outFile, data, counter, s_subj, s_from)
 					except:
 						outFile=""
-						logNotice('Saving text from message "'+s_subj+'" from "'+s_from+'" was not possible')
+						logNotice(STR_SAVE_TEXT_ERROR_1+s_subj+STR_SAVE_TEXT_ERROR_2+s_from+STR_SAVE_TEXT_ERROR_3)
 
 				# Set information that message had text part
 				wasTextInMessage=True
@@ -388,13 +470,13 @@ def getAndProcess(passBuffer=None):
 					outFile=saveMessagePart(True, outFile, data, counter, s_subj, s_from)
 				except:
 					outFile=""
-					logNotice('Saving image from message "'+s_subj+'" from "'+s_from+'" was not possible')
+					logNotice(STR_SAVE_IMAGE_ERROR_1+s_subj+STR_SAVE_IMAGE_ERROR_2+s_from+STR_SAVE_IMAGE_ERROR_3)
 
 			# Or something else?
 			else:
 				# Discard it (as it may be vulnerable)
 				outFile=""
-				logNotice('Discarded an attachment from message "'+s_subj+'" from "'+s_from+'"')
+				logNotice(STR_ATTACHMENT_DISC_1+s_subj+STR_ATTACHMENT_DISC_2+s_from+STR_ATTACHMENT_DISC_3)
 
 			# Increase the file counter and add file to the list (if there is any)
 			counter+=1
@@ -407,14 +489,14 @@ def getAndProcess(passBuffer=None):
 				# Yeah, a little ugly condition (comparing strings instead of making own, more sophisticated class for variables...)
 				# However, testing if there are any files in the list and if we got any usable information at this point
 				if (fileList==[]) and (s_from==NO_DATA) and (s_subj==NO_DATA) and (s_date==NO_DATA):
-					logNotice("There was nothing to fax from the message")
+					logNotice(STR_NOTHING_TO_FAX)
 					nothingUseful=True
 				else:
 					# Write '0.txt' file containing just headers and add it at the very beginning of the file list
 					outFile=saveMessagePart(False, "0.txt", prepareTextHeader(s_from,s_subj,s_date,False), 0, s_subj, s_from)
 					fileList=[outFile]+fileList
 			except:
-				logNotice('Saving headers from message "'+s_subj+'" from "'+s_from+'" was not possible')
+				logNotice(STR_HEAD_SAVE_ERROR_1+s_subj+STR_HEAD_SAVE_ERROR_2+s_from+STR_HEAD_SAVE_ERROR_3)
 
 		# Now, process all the saved files
 		for x in range(len(fileList)):
@@ -459,7 +541,7 @@ def getAndProcess(passBuffer=None):
 
 				# If reading an image isn't possible, skip it, but leave a notice in log
 				except:
-					logNotice('Skipped corrupted image file from the message titled "'+s_subj+'" from "'+s_from+'"')
+					logNotice(STR_IMAGE_CORR_ERR_1+s_subj+STR_IMAGE_CORR_ERR_2+s_from+STR_IMAGE_CORR_ERR_3)
 
 		# Now prepare the faxspool command
 		command=["faxspool",PHONE_NUMBER]
@@ -478,7 +560,7 @@ def getAndProcess(passBuffer=None):
 		else:
 			# If not, let's log it
 			if not nothingUseful:
-				logNotice('There was nothing to fax from message titled "'+s_subj+'" from "'+s_from+'"')
+				logNotice(STR_NOTHING_TO_FAX_I_1+s_subj+STR_NOTHING_TO_FAX_I_2+s_from+STR_NOTHING_TO_FAX_I_3)
 
 	# I think it's good to log any error (so bugs can be reported)
 	except Exception as e:
@@ -492,6 +574,8 @@ def getAndProcess(passBuffer=None):
 
 	# We're done ;)
 	return everythingOK
+
+################################################################################
 
 # Autorun part
 if __name__ == "__main__":
