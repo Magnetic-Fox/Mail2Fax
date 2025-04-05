@@ -4,9 +4,9 @@
 #
 # Simple E-Mail to Fax Relay Utility for Procmail
 #
-# by Magnetic-Fox, 13.07.2024 - 01.12.2024
+# by Magnetic-Fox, 13.07.2024 - 05.04.2025
 #
-# (C)2024 Bartłomiej "Magnetic-Fox" Węgrzyn!
+# (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 #
 ################################################################################
 
@@ -413,6 +413,8 @@ def getAndProcess(passBuffer=None):
 
 				# Convert HTML to text
 				if part.get_content_subtype()=="html":
+					# Replace any <br> and <br /> to the new lines (well, this simple HTMLFilter can't do this)
+					data=data.replace("<br>","\n").replace("<br />","\n")
 					converter=HTMLFilter()
 					converter.feed(data)
 					data=converter.text
