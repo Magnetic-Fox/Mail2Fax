@@ -4,7 +4,7 @@
 #
 # Simple E-Mail to Fax Relay Utility for Procmail
 #
-# by Magnetic-Fox, 13.07.2024 - 05.04.2025
+# by Magnetic-Fox, 13.07.2024 - 11.04.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 #
@@ -45,6 +45,8 @@ SETTINGS_DEL_MESS_TRIG=	True
 SETTINGS_SUBJECT_TRIG=	"[FAX] "
 SETTINGS_MESSAGE_TRIG=	"!DISCARD!"
 SETTINGS_USE_PLAIN=	True
+SETTINGS_MSPACES_TONL=	False
+SETTINGS_AMPS_CHANGE=	False
 
 # String table
 # Image saving
@@ -108,6 +110,24 @@ settingsLoaded=False
 ################################################################################
 
 # Functions...
+
+# Simple spaces counter
+def spacesCount(string, position):
+	for x in range(position,len(string)):
+		if(string[x]!=' '):
+			return x-position
+	if(position<=len(string)):
+		return len(string)-position
+	else:
+		return 0
+
+# Multi spaces to returns
+def multiSpacesToReturns(string):
+	while(string.find("  ")!=-1):
+		# Not really optimized line, but I didn't want to use regexes ;)
+		string=string.replace(" "*spacesCount(string,string.find("  ")),"\n"*(spacesCount(string,string.find("  "))-1),1)
+	return string
+
 # Simple procedure for passing error messages to the system log
 def logError(errorString):
 	subprocess.check_output(["logger",LOGGER_ERROR+errorString])
@@ -120,7 +140,7 @@ def logNotice(noticeString):
 
 # Procedure for loading settings from the INI file
 def loadSettings(settingsFile="relay_settings.ini"):
-	global NO_DATA, SENDER, SUBJECT, DATE, PHONE_NUMBER, DELETE_SUBJECT_TRIGGER, DELETE_MESSAGE_TRIGGER, SUBJECT_TRIGGER, MESSAGE_TRIGGER, USE_PLAIN, settingsLoaded
+	global NO_DATA, SENDER, SUBJECT, DATE, PHONE_NUMBER, DELETE_SUBJECT_TRIGGER, DELETE_MESSAGE_TRIGGER, SUBJECT_TRIGGER, MESSAGE_TRIGGER, USE_PLAIN, MSPACES_TONL, AMPS_CHANGE, settingsLoaded
 
 	# Create parser object and try to load the settings file
 	config=configparser.ConfigParser()
@@ -143,6 +163,8 @@ def loadSettings(settingsFile="relay_settings.ini"):
 	SUBJECT_TRIGGER=config.get("message","subject_trigger",fallback=SETTINGS_SUBJECT_TRIG).replace('"','')
 	MESSAGE_TRIGGER=config.get("message","message_trigger",fallback=SETTINGS_MESSAGE_TRIG).replace('"','')
 	USE_PLAIN=config.getboolean("message","use_plain",fallback=SETTINGS_USE_PLAIN)
+	MSPACES_TONL=config.getboolean("message","multispaces_to_new_lines",fallback=SETTINGS_MSPACES_TONL)
+	AMPS_CHANGE=config.getboolean("message","convert_amp_characters",fallback=SETTINGS_AMPS_CHANGE)
 
 	# Note that everything has finished
 	settingsLoaded=True
@@ -154,6 +176,27 @@ class HTMLFilter(html.parser.HTMLParser):
 	text=""
 	def handle_data(self, data):
 		self.text+=data
+
+# Function for finding HTML-style amp character
+def findAmpChar(string, position=0):
+	ampPos=string.find('&',position)
+	endPos=string.find(';',ampPos)
+	if endPos>ampPos:
+		return string[ampPos:endPos+1]
+	else:
+		return ""
+
+# Function for changing all HTML-style amp characters
+def changeAmpChars(string):
+	position=0
+	while(findAmpChar(string,position)!=""):
+		converter=HTMLFilter()
+		converter.feed(findAmpChar(string))
+		string=string.replace(findAmpChar(string),converter.text)
+		position=string.find("&",position+1)
+		if position<0:
+			break
+	return string
 
 # Mail header decoding helper
 def decodeHeader(input):
@@ -411,13 +454,23 @@ def getAndProcess(passBuffer=None):
 				except:
 					data=str(data)
 
-				# Convert HTML to text
+				# If HTML then convert it to text
 				if part.get_content_subtype()=="html":
 					# Replace any <br> and <br /> to the new lines (well, this simple HTMLFilter can't do this)
 					data=data.replace("<br>","\n").replace("<br />","\n")
 					converter=HTMLFilter()
 					converter.feed(data)
 					data=converter.text
+				# If not HTML
+				else:
+					# If multispaces to new lines option activated (which should be avoided)
+					if MSPACES_TONL:
+						# well, then convert them
+						data=multiSpacesToReturns(data)
+					# If changing amp characters option activated (which also should be avoided)
+					if AMPS_CHANGE:
+						# well, then convert them
+						data=changeAmpChars(data)
 
 				# Convert any CR+LF to just LF (big thanks to MariuszK, who accidentally found that part missing!)
 				data=data.replace("\r\n","\n")
