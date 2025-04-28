@@ -4,7 +4,7 @@
 #
 # Simple E-Mail to Fax Relay Utility for Procmail
 #
-# by Magnetic-Fox, 13.07.2024 - 11.04.2025
+# by Magnetic-Fox, 13.07.2024 - 28.04.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 #
@@ -428,7 +428,8 @@ def getAndProcess(passBuffer=None):
 				data=part.get_payload()
 
 			# Get file name properties (to extract extension)
-			filename=part.get_filename()
+			# Try also to decode filename (big thanks to MarX, who accidentally found that part missing!)
+			filename=decodeHeader(part.get_filename())
 			if filename==None:
 				fN=""
 				fExt=""
@@ -488,7 +489,7 @@ def getAndProcess(passBuffer=None):
 					first=False
 
 				# Is message triggered?
-				messageTriggered=MESSAGE_TRIGGER in data
+				messageTriggered=(data.find(MESSAGE_TRIGGER)!=-1)
 				if not DELETE_MESSAGE_TRIGGER:
 					messageTriggered=False
 
@@ -516,7 +517,10 @@ def getAndProcess(passBuffer=None):
 							fExt="."+quickImageFormat(data)
 					outFile=str(counter)+fExt
 				elif(quickImageFormat(data)!=""):
+					# Try to guess image format
 					fExt="."+quickImageFormat(data)
+					# Update filename (again, big thanks to MarX, who accidentally found that part missing!)
+					outFile=str(counter)+fExt
 				else:
 					# Default...
 					outFile=str(counter)+".jpg"
@@ -535,6 +539,7 @@ def getAndProcess(passBuffer=None):
 
 			# Increase the file counter and add file to the list (if there is any)
 			counter+=1
+
 			if outFile!="":
 				fileList+=[outFile]
 
