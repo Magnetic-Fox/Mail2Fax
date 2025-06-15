@@ -73,6 +73,20 @@ This file just has to invoke Procmail, so its content might be as simple as this
 Create the `.procmailrc` file in home directory of chosen account. You'll need to provide simple conditions, which will control which messages have to be sent to the script. As these might be sent to You as a plain text, quoted printable or Base64, You'll need at least these three conditions:
 
 ```
+# FAX2
+:0
+* ^Subject:.*\[FAX2\]*
+| $HOME/Python/relay.py FAX2
+
+:0
+* ^Subject:.*W0ZBWDJd*
+| $HOME/Python/relay.py FAX2
+
+:0
+* ^Subject:.*?Q?=5BFAX2=5D*
+| $HOME/Python/relay.py FAX2
+
+# FAX
 :0
 * ^Subject:.*\[FAX\]*
 | $HOME/relay.py
@@ -87,6 +101,9 @@ Create the `.procmailrc` file in home directory of chosen account. You'll need t
 ```
 
 The second condition is just `[FAX]` but Base64-encoded (without `=` at the end, which is very important!).
+The third condition is just `[FAX]` but in the Quoted-Printable.
+
+For Procmail to work as expected, You have to pass second fax before the first one, which I decided to show above.
 
 ### Configuring Fetchmail (optional)
 
