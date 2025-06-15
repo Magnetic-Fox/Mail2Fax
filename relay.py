@@ -4,7 +4,7 @@
 #
 # Simple E-Mail to Fax Relay Utility for Procmail
 #
-# by Magnetic-Fox, 13.07.2024 - 28.04.2025
+# by Magnetic-Fox, 13.07.2024 - 28.04.2025, 15.06.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 #
@@ -31,22 +31,24 @@ import io
 
 # Main constants
 # Logger texts constants
-LOGGER_ERROR=		"relay.py: error: "
-LOGGER_NOTICE=		"relay.py: notice: "
+LOGGER_ERROR=				"relay.py: error: "
+LOGGER_NOTICE=				"relay.py: notice: "
 
 # Default settings constants
-SETTINGS_NO_DATA=	"(no data)"
-SETTINGS_SENDER=	"Sender:  "
-SETTINGS_SUBJECT=	"Subject: "
-SETTINGS_DATE=		"Date:    "
-SETTINGS_PHONE_NUMBER=	""
-SETTINGS_DEL_SUB_TRIG=	True
-SETTINGS_DEL_MESS_TRIG=	True
-SETTINGS_SUBJECT_TRIG=	"[FAX] "
-SETTINGS_MESSAGE_TRIG=	"!DISCARD!"
-SETTINGS_USE_PLAIN=	True
-SETTINGS_MSPACES_TONL=	False
-SETTINGS_AMPS_CHANGE=	False
+SETTINGS_NO_DATA=			"(no data)"
+SETTINGS_SENDER=			"Sender:  "
+SETTINGS_SUBJECT=			"Subject: "
+SETTINGS_DATE=				"Date:    "
+SETTINGS_PHONE_NUMBER=			""
+SETTINGS_DEL_SUB_TRIG=			True
+SETTINGS_DEL_MESS_TRIG=			True
+SETTINGS_SUBJECT_TRIG=			"[FAX] "
+SETTINGS_MESSAGE_TRIG=			"!DISCARD!"
+SETTINGS_USE_PLAIN=			True
+SETTINGS_MSPACES_TONL=			False
+SETTINGS_AMPS_CHANGE=			False
+SETTINGS_DEFAULT_SETTINGS=		"FAX"
+SETTINGS_USE_DEFAULT_ON_WRONG_PARAM=	False
 
 # String table
 # Image saving
@@ -102,6 +104,12 @@ STR_NOTHING_TO_FAX_I_1=	'There was nothing to fax from message titled "'
 STR_NOTHING_TO_FAX_I_2=	STR_SAVE_IMAGE_2
 STR_NOTHING_TO_FAX_I_3=	STR_ATTACHMENT_DISC_3
 
+# No settings error
+STR_NO_SECTION=		'No settings for: '
+STR_NO_PARAM_SET=	'No setting parameter!'
+STR_USING_DEFAULT=	'Using default, which is: '
+STR_NOT_USING_DEFAULT=	'Not using default!'
+
 ################################################################################
 
 # Main global variable
@@ -139,7 +147,7 @@ def logNotice(noticeString):
         return
 
 # Procedure for loading settings from the INI file
-def loadSettings(settingsFile="relay_settings.ini"):
+def loadSettings(whichFax="", settingsFile="relay_settings.ini"):
 	global NO_DATA, SENDER, SUBJECT, DATE, PHONE_NUMBER, DELETE_SUBJECT_TRIGGER, DELETE_MESSAGE_TRIGGER, SUBJECT_TRIGGER, MESSAGE_TRIGGER, USE_PLAIN, MSPACES_TONL, AMPS_CHANGE, settingsLoaded
 
 	# Create parser object and try to load the settings file
@@ -157,14 +165,28 @@ def loadSettings(settingsFile="relay_settings.ini"):
 	SENDER=config.get("strings","sender",fallback=SETTINGS_SENDER).replace('"','')
 	SUBJECT=config.get("strings","subject",fallback=SETTINGS_SUBJECT).replace('"','')
 	DATE=config.get("strings","date",fallback=SETTINGS_DATE).replace('"','')
-	PHONE_NUMBER=config.get("phone","number",fallback=SETTINGS_PHONE_NUMBER).replace('"','')
 	DELETE_SUBJECT_TRIGGER=config.getboolean("message","delete_subject_trigger",fallback=SETTINGS_DEL_SUB_TRIG)
 	DELETE_MESSAGE_TRIGGER=config.getboolean("message","delete_message_trigger",fallback=SETTINGS_DEL_MESS_TRIG)
-	SUBJECT_TRIGGER=config.get("message","subject_trigger",fallback=SETTINGS_SUBJECT_TRIG).replace('"','')
 	MESSAGE_TRIGGER=config.get("message","message_trigger",fallback=SETTINGS_MESSAGE_TRIG).replace('"','')
 	USE_PLAIN=config.getboolean("message","use_plain",fallback=SETTINGS_USE_PLAIN)
 	MSPACES_TONL=config.getboolean("message","multispaces_to_new_lines",fallback=SETTINGS_MSPACES_TONL)
 	AMPS_CHANGE=config.getboolean("message","convert_amp_characters",fallback=SETTINGS_AMPS_CHANGE)
+
+	# Load settings for the chosen fax
+	if (whichFax=="") or (not config.has_section(whichFax)):
+		if whichFax=="":
+			logNotice(STR_NO_PARAM_SET)
+		else:
+			logNotice(STR_NO_SECTION+whichFax)
+		if config.getboolean("default","use_default_on_wrong_parameter",fallback=SETTINGS_USE_DEFAULT_ON_WRONG_PARAM):
+			whichFax=config.get("default","default_settings",fallback=SETTINGS_DEFAULT_SETTINGS).replace('"','')
+			logNotice(STR_USING_DEFAULT+whichFax)
+		else:
+			logNotice(STR_NOT_USING_DEFAULT)
+
+	# Get phone number and the subject trigger
+	PHONE_NUMBER=config.get(whichFax,"phone_number",fallback=SETTINGS_PHONE_NUMBER).replace('"','')
+	SUBJECT_TRIGGER=config.get(whichFax,"subject_trigger",fallback=SETTINGS_SUBJECT_TRIG).replace('"','')
 
 	# Note that everything has finished
 	settingsLoaded=True
@@ -348,13 +370,20 @@ def saveMessagePart(binary, outFile, data, counter, s_subj, s_from):
 	return outFile
 
 # Main program procedure
-def getAndProcess(passBuffer=None):
+def getAndProcess(passBuffer=None, whichFax=""):
+	# Check and get parameter
+	if whichFax!="":
+		if len(sys.argv)>1:
+			whichFax=sys.argv[1]
+		else:
+			whichFax=""
+
 	# Prepare everything
 	everythingOK=True
 
 	# Load settings if needed
 	if not settingsLoaded:
-		loadSettings()
+		loadSettings(whichFax=whichFax)
 
 	# Stop further processing - there are not any phone number to fax specified!
 	if (PHONE_NUMBER=="") or (PHONE_NUMBER==None):
@@ -641,7 +670,11 @@ def getAndProcess(passBuffer=None):
 if __name__ == "__main__":
 	# Try to get and process incomming message
 	try:
-		loadSettings()
+		if len(sys.argv)>1:
+			whichFax=sys.argv[1]
+		else:
+			whichFax=""
+		loadSettings(whichFax=whichFax)
 		if getAndProcess():
 			exit(0)
 		else:
