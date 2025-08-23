@@ -4,7 +4,7 @@
 #
 # Simple E-Mail to Fax Relay Utility for Procmail
 #
-# by Magnetic-Fox, 13.07.2024 - 28.04.2025, 15.06.2025
+# by Magnetic-Fox, 13.07.2024 - 28.04.2025, 15.06.2025, 23.08.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 #
@@ -44,6 +44,9 @@ SETTINGS_DEL_SUB_TRIG=			True
 SETTINGS_DEL_MESS_TRIG=			True
 SETTINGS_SUBJECT_TRIG=			"[FAX] "
 SETTINGS_MESSAGE_TRIG=			"!DISCARD!"
+SETTINGS_STANDARD_TRIG=			"!STANDARD!"
+SETTINGS_USE_STAN_TRIG=			True
+SETTINGS_DEL_STAN_TRIG=			True
 SETTINGS_USE_PLAIN=			True
 SETTINGS_MSPACES_TONL=			False
 SETTINGS_AMPS_CHANGE=			False
@@ -148,7 +151,7 @@ def logNotice(noticeString):
 
 # Procedure for loading settings from the INI file
 def loadSettings(whichFax="", settingsFile="relay_settings.ini"):
-	global NO_DATA, SENDER, SUBJECT, DATE, PHONE_NUMBER, DELETE_SUBJECT_TRIGGER, DELETE_MESSAGE_TRIGGER, SUBJECT_TRIGGER, MESSAGE_TRIGGER, USE_PLAIN, MSPACES_TONL, AMPS_CHANGE, settingsLoaded
+	global NO_DATA, SENDER, SUBJECT, DATE, PHONE_NUMBER, DELETE_SUBJECT_TRIGGER, DELETE_MESSAGE_TRIGGER, SUBJECT_TRIGGER, MESSAGE_TRIGGER, STANDARD_TRIGGER, USE_STANDARD_TRIGGER, DELETE_STANDARD_TRIGGER, USE_PLAIN, MSPACES_TONL, AMPS_CHANGE, settingsLoaded
 
 	# Create parser object and try to load the settings file
 	config=configparser.ConfigParser()
@@ -168,6 +171,9 @@ def loadSettings(whichFax="", settingsFile="relay_settings.ini"):
 	DELETE_SUBJECT_TRIGGER=config.getboolean("message","delete_subject_trigger",fallback=SETTINGS_DEL_SUB_TRIG)
 	DELETE_MESSAGE_TRIGGER=config.getboolean("message","delete_message_trigger",fallback=SETTINGS_DEL_MESS_TRIG)
 	MESSAGE_TRIGGER=config.get("message","message_trigger",fallback=SETTINGS_MESSAGE_TRIG).replace('"','')
+	STANDARD_TRIGGER=config.get("message","standard_trigger",fallback=SETTINGS_STANDARD_TRIG).replace('"','')
+	DELETE_STANDARD_TRIGGER=config.getboolean("message","delete_standard_trigger",fallback=SETTINGS_DEL_STAN_TRIG)
+	USE_STANDARD_TRIGGER=config.getboolean("message","use_standard_trigger",fallback=SETTINGS_USE_STAN_TRIG)
 	USE_PLAIN=config.getboolean("message","use_plain",fallback=SETTINGS_USE_PLAIN)
 	MSPACES_TONL=config.getboolean("message","multispaces_to_new_lines",fallback=SETTINGS_MSPACES_TONL)
 	AMPS_CHANGE=config.getboolean("message","convert_amp_characters",fallback=SETTINGS_AMPS_CHANGE)
@@ -403,6 +409,8 @@ def getAndProcess(passBuffer=None, whichFax=""):
 	anything=False
 	wasTextInMessage=False
 	nothingUseful=False
+	messageTriggered=False
+	standardTriggered=False
 
 	# And now let's do anything needed...
 	try:
@@ -522,6 +530,13 @@ def getAndProcess(passBuffer=None, whichFax=""):
 				if not DELETE_MESSAGE_TRIGGER:
 					messageTriggered=False
 
+				# If we are going to use standard resolution trigger?
+				if USE_STANDARD_TRIGGER:
+					# Is fax going to be sent in standard resolution?
+					standardTriggered=(data.find(STANDARD_TRIGGER)!=-1)
+					if DELETE_STANDARD_TRIGGER:
+						data=data.replace(STANDARD_TRIGGER,"")
+
 				# Save text to temporary file
 				if not messageTriggered:
 					outFile=str(counter)+".txt"
@@ -633,7 +648,10 @@ def getAndProcess(passBuffer=None, whichFax=""):
 					logNotice(STR_IMAGE_CORR_ERR_1+s_subj+STR_IMAGE_CORR_ERR_2+s_from+STR_IMAGE_CORR_ERR_3)
 
 		# Now prepare the faxspool command
-		command=["faxspool",PHONE_NUMBER]
+		if standardTriggered:
+			command=["faxspool","-n",PHONE_NUMBER]
+		else:
+			command=["faxspool",PHONE_NUMBER]
 
 		for file in fileList:
 			# Add only the TIFFs (additional safety condition)
