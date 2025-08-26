@@ -4,7 +4,7 @@
 #
 # Simple E-Mail to Fax Relay Utility for Procmail
 #
-# by Magnetic-Fox, 13.07.2024 - 28.04.2025, 15.06.2025, 23.08.2025
+# by Magnetic-Fox, 13.07.2024 - 28.04.2025, 15.06.2025, 23-26.08.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 #
@@ -52,6 +52,8 @@ SETTINGS_MSPACES_TONL=			False
 SETTINGS_AMPS_CHANGE=			False
 SETTINGS_DEFAULT_SETTINGS=		"FAX"
 SETTINGS_USE_DEFAULT_ON_WRONG_PARAM=	False
+SETTINGS_STRIP_BE_NLS=			True
+SETTINGS_STRIP_INTEXT_NLS=		True
 
 # String table
 # Image saving
@@ -113,6 +115,16 @@ STR_NO_PARAM_SET=	'No setting parameter!'
 STR_USING_DEFAULT=	'Using default, which is: '
 STR_NOT_USING_DEFAULT=	'Not using default!'
 
+# Text discarded
+STR_TEXT_DISCARDED_1=	'Text part of the message "'
+STR_TEXT_DISCARDED_2=	STR_SAVE_IMAGE_2
+STR_TEXT_DISCARDED_3=	'" discarded due to the message trigger'
+
+# Standard resolution
+STR_STANDARD_RES_1=	'Standard resolution triggered for message "'
+STR_STANDARD_RES_2=	STR_SAVE_IMAGE_2
+STR_STANDARD_RES_3=	STR_ATTACHMENT_DISC_3
+
 ################################################################################
 
 # Main global variable
@@ -121,6 +133,21 @@ settingsLoaded=False
 ################################################################################
 
 # Functions...
+
+# Simple new line characters counter
+def countNewLines(data,position):
+	count=0
+	while data.find("\n",position)==position:
+		count=count+1
+		position=position+1
+	return count
+
+# Simple duplicated new line characters remover
+def removeDuplicatedNewLines(data):
+	while data.find("\n\n\n")!=-1:
+		count=countNewLines(data,data.find("\n\n\n"))
+		data=data.replace("\n"*count,"\n\n")
+	return data
 
 # Simple spaces counter
 def spacesCount(string, position):
@@ -151,7 +178,7 @@ def logNotice(noticeString):
 
 # Procedure for loading settings from the INI file
 def loadSettings(whichFax="", settingsFile="relay_settings.ini"):
-	global NO_DATA, SENDER, SUBJECT, DATE, PHONE_NUMBER, DELETE_SUBJECT_TRIGGER, DELETE_MESSAGE_TRIGGER, SUBJECT_TRIGGER, MESSAGE_TRIGGER, STANDARD_TRIGGER, USE_STANDARD_TRIGGER, DELETE_STANDARD_TRIGGER, USE_PLAIN, MSPACES_TONL, AMPS_CHANGE, settingsLoaded
+	global NO_DATA, SENDER, SUBJECT, DATE, PHONE_NUMBER, DELETE_SUBJECT_TRIGGER, DELETE_MESSAGE_TRIGGER, SUBJECT_TRIGGER, MESSAGE_TRIGGER, STANDARD_TRIGGER, USE_STANDARD_TRIGGER, DELETE_STANDARD_TRIGGER, USE_PLAIN, MSPACES_TONL, AMPS_CHANGE, STRIP_BE_NLS, STRIP_INTEXT_NLS, settingsLoaded
 
 	# Create parser object and try to load the settings file
 	config=configparser.ConfigParser()
@@ -164,19 +191,21 @@ def loadSettings(whichFax="", settingsFile="relay_settings.ini"):
 			pass
 
 	# Load settings if possible (or defaults, if not)
-	NO_DATA=config.get("strings","no_data",fallback=SETTINGS_NO_DATA).replace('"','')
-	SENDER=config.get("strings","sender",fallback=SETTINGS_SENDER).replace('"','')
-	SUBJECT=config.get("strings","subject",fallback=SETTINGS_SUBJECT).replace('"','')
-	DATE=config.get("strings","date",fallback=SETTINGS_DATE).replace('"','')
-	DELETE_SUBJECT_TRIGGER=config.getboolean("message","delete_subject_trigger",fallback=SETTINGS_DEL_SUB_TRIG)
-	DELETE_MESSAGE_TRIGGER=config.getboolean("message","delete_message_trigger",fallback=SETTINGS_DEL_MESS_TRIG)
-	MESSAGE_TRIGGER=config.get("message","message_trigger",fallback=SETTINGS_MESSAGE_TRIG).replace('"','')
-	STANDARD_TRIGGER=config.get("message","standard_trigger",fallback=SETTINGS_STANDARD_TRIG).replace('"','')
-	DELETE_STANDARD_TRIGGER=config.getboolean("message","delete_standard_trigger",fallback=SETTINGS_DEL_STAN_TRIG)
-	USE_STANDARD_TRIGGER=config.getboolean("message","use_standard_trigger",fallback=SETTINGS_USE_STAN_TRIG)
-	USE_PLAIN=config.getboolean("message","use_plain",fallback=SETTINGS_USE_PLAIN)
-	MSPACES_TONL=config.getboolean("message","multispaces_to_new_lines",fallback=SETTINGS_MSPACES_TONL)
-	AMPS_CHANGE=config.getboolean("message","convert_amp_characters",fallback=SETTINGS_AMPS_CHANGE)
+	NO_DATA=		config.get("strings","no_data",					fallback=SETTINGS_NO_DATA).replace('"','')
+	SENDER=			config.get("strings","sender",					fallback=SETTINGS_SENDER).replace('"','')
+	SUBJECT=		config.get("strings","subject",					fallback=SETTINGS_SUBJECT).replace('"','')
+	DATE=			config.get("strings","date",					fallback=SETTINGS_DATE).replace('"','')
+	MESSAGE_TRIGGER=	config.get("message","message_trigger",				fallback=SETTINGS_MESSAGE_TRIG).replace('"','')
+	STANDARD_TRIGGER=	config.get("message","standard_trigger",			fallback=SETTINGS_STANDARD_TRIG).replace('"','')
+	DELETE_SUBJECT_TRIGGER=	config.getboolean("message","delete_subject_trigger",		fallback=SETTINGS_DEL_SUB_TRIG)
+	DELETE_MESSAGE_TRIGGER=	config.getboolean("message","delete_message_trigger",		fallback=SETTINGS_DEL_MESS_TRIG)
+	DELETE_STANDARD_TRIGGER=config.getboolean("message","delete_standard_trigger",		fallback=SETTINGS_DEL_STAN_TRIG)
+	USE_STANDARD_TRIGGER=	config.getboolean("message","use_standard_trigger",		fallback=SETTINGS_USE_STAN_TRIG)
+	USE_PLAIN=		config.getboolean("message","use_plain",			fallback=SETTINGS_USE_PLAIN)
+	MSPACES_TONL=		config.getboolean("message","multispaces_to_new_lines",		fallback=SETTINGS_MSPACES_TONL)
+	AMPS_CHANGE=		config.getboolean("message","convert_amp_characters",		fallback=SETTINGS_AMPS_CHANGE)
+	STRIP_BE_NLS=		config.getboolean("message","strip_new_lines_on_startend",	fallback=SETTINGS_STRIP_BE_NLS)
+	STRIP_INTEXT_NLS=	config.getboolean("message","strip_intext_new_lines",		fallback=SETTINGS_STRIP_INTEXT_NLS)
 
 	# Load settings for the chosen fax
 	if (whichFax=="") or (not config.has_section(whichFax)):
@@ -480,9 +509,17 @@ def getAndProcess(passBuffer=None, whichFax=""):
 			# Let's store it in its own variable to make some other tests
 			contentMainType=part.get_content_maintype()
 
-			# For example, test if text/plain isn't in fact an image...
-			if (type(data)==bytes) and (quickImageTest(data)):
+			# Let's check if text/plain isn't in fact an image...
+			if (contentMainType=="text") and (type(data)==bytes) and (quickImageTest(data)):
 				contentMainType="image"
+				# Log this change
+				logNotice(STR_SAVE_TEXT_1+s_subj+STR_SAVE_TEXT_2+s_from+STR_SAVE_TEXT_3)
+
+			# Let's check if image/* isn't in fact a text...
+			if (contentMainType=="image") and (type(data)==str) and (not quickImageTest(data)):
+				contentMainType="text"
+				# Log this change
+				logNotice(STR_SAVE_IMAGE_1+s_subj+STR_SAVE_IMAGE_2+s_from+STR_SAVE_IMAGE_3)
 
 			# If we're dealing with text part
 			if contentMainType=="text":
@@ -513,8 +550,15 @@ def getAndProcess(passBuffer=None, whichFax=""):
 				# Convert any CR+LF to just LF (big thanks to MariuszK, who accidentally found that part missing!)
 				data=data.replace("\r\n","\n")
 
-				# Remove any leading and trailing returns (helps not to waste fax machine's recording paper)
-				data=data.lstrip('\n').rstrip('\n')
+				# If set to...
+				if STRIP_BE_NLS:
+					# then remove any leading and trailing returns (helps not to waste fax machine's recording paper)
+					data=data.lstrip('\n').rstrip('\n')
+
+				# If set to...
+				if STRIP_INTEXT_NLS:
+					# then remove any in-text more-than-two returns (also helps not to waste fax machine's recording paper)
+					data=removeDuplicatedNewLines(data)
 
 				# And this is out first time
 				if first:
@@ -545,6 +589,8 @@ def getAndProcess(passBuffer=None, whichFax=""):
 					except:
 						outFile=""
 						logNotice(STR_SAVE_TEXT_ERROR_1+s_subj+STR_SAVE_TEXT_ERROR_2+s_from+STR_SAVE_TEXT_ERROR_3)
+				else:
+					logNotice(STR_TEXT_DISCARDED_1+s_subj+STR_TEXT_DISCARDED_2+s_from+STR_TEXT_DISCARDED_3)
 
 				# Set information that message had text part
 				wasTextInMessage=True
@@ -662,6 +708,10 @@ def getAndProcess(passBuffer=None, whichFax=""):
 
 		# If we got anything that can be sent
 		if anything:
+			# If standard resolution triggered
+			if standardTriggered:
+				# Then log it
+				logNotice(STR_STANDARD_RES_1+s_subj+STR_STANDARD_RES_2+s_from+STR_STANDARD_RES_3)
 			# Then send it
 			subprocess.check_output(command)
 		else:
