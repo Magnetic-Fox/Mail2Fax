@@ -47,6 +47,39 @@ As I've mentioned before, to convert text to G3 TIFFs, the script needs to use `
 Yeah, I know `convert` from ImageMagick can also do this, but results created by `paps` are much better for faxing.
 Converting images is done by `convert` utility from `imagemagick` package. It makes it really good.
 
+## Additional in-message switches
+
+This script can dynamically set some settings according to the e-mail text.
+Current version supports two triggers (which can be changed and/or turned off in the configuration file):
+
+* `!DISCARD!` - discard main text part (also containing headers) from the message (useful while sending images only)
+* `!STANDARD!` - send fax in the standard resolution (as opposed to the default "fine" resolution)
+
+Both triggers can be used in one message in any place of it.
+
+Example message text:
+```
+Hello pal!
+
+Sending You some pictures from my vacations.
+However this text is not needed. ;)
+
+!DISCARD!
+
+Also I'd like to send them quickier to You:
+
+!STANDARD!
+
+Greetings,
+Your friend
+```
+
+Or something very simple:
+```
+!DISCARD!
+!STANDARD!
+```
+
 ## Configuration
 
 ### Preparation
