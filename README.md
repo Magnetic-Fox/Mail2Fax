@@ -53,7 +53,7 @@ Converting images is done by `convert` utility from `imagemagick` package. It ma
 
 First of all, make sure You've satisfied all the dependencies and configured the script properly.
 It's quite easy to test it. You may send a simple message to yourself using `mail -s "Test subject"` command, then save it to a `test.txt` text file and pass it to the script (`cat test.txt | ./relay.py`).
-You can even run this relay directly and write something,, but remember to finish written line with `Enter` and then to press `Ctrl+D` to finish the input stream.
+You can even run this relay directly and write something, but remember to finish written line with `Enter` and then to press `Ctrl+D` to finish the input stream.
 Prepared message (in chosen way) should now be spooled for faxing to the default number specified in the configuration file and suddenly arrive on the fax machine (depending on configuration of `mgetty-fax`).
 If anything goes wrong at this point, there is probably something missing in the system or configuration.
 
@@ -151,7 +151,8 @@ poll <your_mail_server_here> protocol imap:
 	ssl;
 ```
 
-This config file will instruct Fetchmail to work as a daemon and securely poll the server every 15 minutes and try to get the newest messages as quick as possible using IMAP IDLE protocol, keeping them undeleted in the inbox, and deliver them to the specified local user.
+This config file will instruct Fetchmail to work as a daemon and securely poll the server every 15 minutes and try to get the newest messages as quick as possible using IMAP IDLE protocol,
+keeping them undeleted in the inbox, and deliver them to the specified local user.
 
 Finally, You may also need to enable starting Fetchmail as a daemon by changing `/etc/default/fetchmail` file settings.
 
