@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 
-################################################################################
+# E-Mail to Fax Relay Utility for Procmail and MGetty-Fax (faxspool)
 #
-# Simple E-Mail to Fax Relay Utility for Procmail
+# Utilizing PAPS, GhostScript, ImageMagick (convert), Pillow (PIL)
+# and system logger (logger)
 #
-# by Magnetic-Fox, 13.07.2024 - 28.04.2025, 15.06.2025, 23-26.08.2025
+# Software intended for use on Linux systems (especially Debian)
+# because of calling conventions and specific system utilities used
+#
+# by Magnetic-Fox, 13.07.2024 - 27.08.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
-#
-################################################################################
 
-# Imports...
 import tempfile
 import email
 import email.header
@@ -27,112 +28,70 @@ import PIL.Image
 import configparser
 import io
 
-################################################################################
+# Settings class (with default settings applied)
+class Settings:
+	SETTINGS_FILE=				"relay_settings.ini"
+	SETTINGS_RELOADED=			False
+	NO_DATA=				"(no data)"
+	SENDER=					"Sender:  "
+	SUBJECT=				"Subject: "
+	DATE=					"Date:    "
+	PHONE_NUMBER=				""
+	DELETE_SUBJECT_TRIGGER=			True
+	DELETE_MESSAGE_TRIGGER=			True
+	SUBJECT_TRIGGER=			"[FAX] "
+	MESSAGE_TRIGGER=			"!DISCARD!"
+	STANDARD_TRIGGER=			"!STANDARD!"
+	USE_STANDARD_TRIGGER=			True
+	DELETE_STANDARD_TRIGGER=		True
+	USE_PLAIN=				True
+	MSPACES_TONL=				False
+	AMPS_CHANGE=				False
+	DEFAULT_SETTINGS=			"FAX"
+	USE_DEFAULT_SETTINGS_ON_WRONG_PARAM=	False
+	STRIP_BE_NLS=				True
+	STRIP_INTEXT_NLS=			True
 
-# Main constants
-# Logger texts constants
-LOGGER_ERROR=				"relay.py: error: "
-LOGGER_NOTICE=				"relay.py: notice: "
-
-# Default settings constants
-SETTINGS_NO_DATA=			"(no data)"
-SETTINGS_SENDER=			"Sender:  "
-SETTINGS_SUBJECT=			"Subject: "
-SETTINGS_DATE=				"Date:    "
-SETTINGS_PHONE_NUMBER=			""
-SETTINGS_DEL_SUB_TRIG=			True
-SETTINGS_DEL_MESS_TRIG=			True
-SETTINGS_SUBJECT_TRIG=			"[FAX] "
-SETTINGS_MESSAGE_TRIG=			"!DISCARD!"
-SETTINGS_STANDARD_TRIG=			"!STANDARD!"
-SETTINGS_USE_STAN_TRIG=			True
-SETTINGS_DEL_STAN_TRIG=			True
-SETTINGS_USE_PLAIN=			True
-SETTINGS_MSPACES_TONL=			False
-SETTINGS_AMPS_CHANGE=			False
-SETTINGS_DEFAULT_SETTINGS=		"FAX"
-SETTINGS_USE_DEFAULT_ON_WRONG_PARAM=	False
-SETTINGS_STRIP_BE_NLS=			True
-SETTINGS_STRIP_INTEXT_NLS=		True
-
-# String table
-# Image saving
-STR_SAVE_IMAGE_1=	'Going to save image part of the message "'
-STR_SAVE_IMAGE_2=	'" from "'
-STR_SAVE_IMAGE_3=	'" as a text file (probably wrong content type in the message)'
-
-# Text saving
-STR_SAVE_TEXT_1=	'Going to save text part of the message "'
-# same value as STR_SAVE_IMAGE_2
-STR_SAVE_TEXT_2=	STR_SAVE_IMAGE_2
-STR_SAVE_TEXT_3=	'" as an image file (probably wrong content type in the message)'
-
-# No phone number
-STR_NO_PHONE_NUMBER=	"No phone number specified!"
-
-# Saving text error
-STR_SAVE_TEXT_ERROR_1=	'Saving text from message "'
-# same value as STR_SAVE_IMAGE_2
-STR_SAVE_TEXT_ERROR_2=	STR_SAVE_IMAGE_2
-STR_SAVE_TEXT_ERROR_3=	'" was not possible'
-
-# Saving image error
-STR_SAVE_IMAGE_ERROR_1=	'Saving image from message "'
-# same value as STR_SAVE_IMAGE_2 and STR_SAVE_TEXT_ERROR_3
-STR_SAVE_IMAGE_ERROR_2=	STR_SAVE_IMAGE_2
-STR_SAVE_IMAGE_ERROR_3=	STR_SAVE_TEXT_ERROR_3
-
-# Attachment discarded
-STR_ATTACHMENT_DISC_1=	'Discarded an attachment from message "'
-# same value as STR_SAVE_IMAGE_2
-STR_ATTACHMENT_DISC_2=	STR_SAVE_IMAGE_2
-STR_ATTACHMENT_DISC_3=	'"'
-
-# Nothing to fax error
-STR_NOTHING_TO_FAX=	"There was nothing to fax from the message"
-
-# Saving headers error
-STR_HEAD_SAVE_ERROR_1=	'Saving headers from message "'
-# same value as STR_SAVE_IMAGE_2 and STR_SAVE_TEXT_ERROR_3
-STR_HEAD_SAVE_ERROR_2=	STR_SAVE_IMAGE_2
-STR_HEAD_SAVE_ERROR_3=	STR_SAVE_TEXT_ERROR_3
-
-# Corrupted image error
-STR_IMAGE_CORR_ERR_1=	'Skipped corrupted image file from the message titled "'
-# same value as STR_SAVE_IMAGE_2 and STR_ATTACHMENT_DISC_3
-STR_IMAGE_CORR_ERR_2=	STR_SAVE_IMAGE_2
-STR_IMAGE_CORR_ERR_3=	STR_ATTACHMENT_DISC_3
-
-# More informative "nothing to fax" error
-STR_NOTHING_TO_FAX_I_1=	'There was nothing to fax from message titled "'
-# same value as STR_SAVE_IMAGE_2 and STR_ATTACHMENT_DISC_3
-STR_NOTHING_TO_FAX_I_2=	STR_SAVE_IMAGE_2
-STR_NOTHING_TO_FAX_I_3=	STR_ATTACHMENT_DISC_3
-
-# No settings error
-STR_NO_SECTION=		'No settings for: '
-STR_NO_PARAM_SET=	'No setting parameter!'
-STR_USING_DEFAULT=	'Using default, which is: '
-STR_NOT_USING_DEFAULT=	'Not using default!'
-
-# Text discarded
-STR_TEXT_DISCARDED_1=	'Text part of the message "'
-STR_TEXT_DISCARDED_2=	STR_SAVE_IMAGE_2
-STR_TEXT_DISCARDED_3=	'" discarded due to the message trigger'
-
-# Standard resolution
-STR_STANDARD_RES_1=	'Standard resolution triggered for message "'
-STR_STANDARD_RES_2=	STR_SAVE_IMAGE_2
-STR_STANDARD_RES_3=	STR_ATTACHMENT_DISC_3
-
-################################################################################
-
-# Main global variable
-settingsLoaded=False
-
-################################################################################
-
-# Functions...
+# String table class
+class StringTable:
+	LOGGER_ERROR=				"relay.py: error: "
+	LOGGER_NOTICE=				"relay.py: notice: "
+	SAVE_IMAGE_1=				'Going to save image part of the message "'
+	SAVE_IMAGE_2=				'" from "'
+	SAVE_IMAGE_3=				'" as a text file (probably wrong content type in the message)'
+	SAVE_TEXT_1=				'Going to save text part of the message "'
+	SAVE_TEXT_2=				SAVE_IMAGE_2
+	SAVE_TEXT_3=				'" as an image file (probably wrong content type in the message)'
+	NO_PHONE_NUMBER=			"No phone number specified!"
+	SAVE_TEXT_ERROR_1=			'Saving text from message "'
+	SAVE_TEXT_ERROR_2=			SAVE_IMAGE_2
+	SAVE_TEXT_ERROR_3=			'" was not possible'
+	SAVE_IMAGE_ERROR_1=			'Saving image from message "'
+	SAVE_IMAGE_ERROR_2=			SAVE_IMAGE_2
+	SAVE_IMAGE_ERROR_3=			SAVE_TEXT_ERROR_3
+	ATTACHMENT_DISCARDED_1=			'Discarded an attachment from message "'
+	ATTACHMENT_DISCARDED_2=			SAVE_IMAGE_2
+	ATTACHMENT_DISCARDED_3=			'"'
+	NOTHING_TO_FAX=				"There was nothing to fax from the message"
+	HEADER_SAVE_ERROR_1=			'Saving headers from message "'
+	HEADER_SAVE_ERROR_2=			SAVE_IMAGE_2
+	HEADER_SAVE_ERROR_3=			SAVE_TEXT_ERROR_3
+	IMAGE_CORRUPTED_ERROR_1=		'Skipped corrupted image file from the message titled "'
+	IMAGE_CORRUPTED_ERROR_2=		SAVE_IMAGE_2
+	IMAGE_CORRUPTED_ERROR_3=		ATTACHMENT_DISCARDED_3
+	NOTHING_TO_FAX_I_1=			'There was nothing to fax from message titled "'
+	NOTHING_TO_FAX_I_2=			SAVE_IMAGE_2
+	NOTHING_TO_FAX_I_3=			ATTACHMENT_DISCARDED_3
+	NO_SECTION=				'No settings for: '
+	NO_PARAMETER_SET=			'No setting parameter!'
+	USING_DEFAULT=				'Using default, which is: '
+	NOT_USING_DEFAULT=			'Not using default!'
+	TEXT_DISCARDED_1=			'Text part of the message "'
+	TEXT_DISCARDED_2=			SAVE_IMAGE_2
+	TEXT_DISCARDED_3=			'" discarded due to the message trigger'
+	STANDARD_RESOLUTION_1=			'Standard resolution triggered for message "'
+	STANDARD_RESOLUTION_2=			SAVE_IMAGE_2
+	STANDARD_RESOLUTION_3=			ATTACHMENT_DISCARDED_3
 
 # Simple new line characters counter
 def countNewLines(data,position):
@@ -168,18 +127,16 @@ def multiSpacesToReturns(string):
 
 # Simple procedure for passing error messages to the system log
 def logError(errorString):
-	subprocess.check_output(["logger",LOGGER_ERROR+errorString])
+	subprocess.check_output(["logger",StringTable.LOGGER_ERROR+errorString])
 	return
 
 # Simple procedure for passing notices to the system log
 def logNotice(noticeString):
-        subprocess.check_output(["logger",LOGGER_NOTICE+noticeString])
+        subprocess.check_output(["logger",StringTable.LOGGER_NOTICE+noticeString])
         return
 
 # Procedure for loading settings from the INI file
-def loadSettings(whichFax="", settingsFile="relay_settings.ini"):
-	global NO_DATA, SENDER, SUBJECT, DATE, PHONE_NUMBER, DELETE_SUBJECT_TRIGGER, DELETE_MESSAGE_TRIGGER, SUBJECT_TRIGGER, MESSAGE_TRIGGER, STANDARD_TRIGGER, USE_STANDARD_TRIGGER, DELETE_STANDARD_TRIGGER, USE_PLAIN, MSPACES_TONL, AMPS_CHANGE, STRIP_BE_NLS, STRIP_INTEXT_NLS, settingsLoaded
-
+def loadSettings(whichFax="", settingsFile=Settings.SETTINGS_FILE):
 	# Create parser object and try to load the settings file
 	config=configparser.ConfigParser()
 	if config.read(settingsFile)==[]:
@@ -191,40 +148,42 @@ def loadSettings(whichFax="", settingsFile="relay_settings.ini"):
 			pass
 
 	# Load settings if possible (or defaults, if not)
-	NO_DATA=		config.get("strings","no_data",					fallback=SETTINGS_NO_DATA).replace('"','')
-	SENDER=			config.get("strings","sender",					fallback=SETTINGS_SENDER).replace('"','')
-	SUBJECT=		config.get("strings","subject",					fallback=SETTINGS_SUBJECT).replace('"','')
-	DATE=			config.get("strings","date",					fallback=SETTINGS_DATE).replace('"','')
-	MESSAGE_TRIGGER=	config.get("message","message_trigger",				fallback=SETTINGS_MESSAGE_TRIG).replace('"','')
-	STANDARD_TRIGGER=	config.get("message","standard_trigger",			fallback=SETTINGS_STANDARD_TRIG).replace('"','')
-	DELETE_SUBJECT_TRIGGER=	config.getboolean("message","delete_subject_trigger",		fallback=SETTINGS_DEL_SUB_TRIG)
-	DELETE_MESSAGE_TRIGGER=	config.getboolean("message","delete_message_trigger",		fallback=SETTINGS_DEL_MESS_TRIG)
-	DELETE_STANDARD_TRIGGER=config.getboolean("message","delete_standard_trigger",		fallback=SETTINGS_DEL_STAN_TRIG)
-	USE_STANDARD_TRIGGER=	config.getboolean("message","use_standard_trigger",		fallback=SETTINGS_USE_STAN_TRIG)
-	USE_PLAIN=		config.getboolean("message","use_plain",			fallback=SETTINGS_USE_PLAIN)
-	MSPACES_TONL=		config.getboolean("message","multispaces_to_new_lines",		fallback=SETTINGS_MSPACES_TONL)
-	AMPS_CHANGE=		config.getboolean("message","convert_amp_characters",		fallback=SETTINGS_AMPS_CHANGE)
-	STRIP_BE_NLS=		config.getboolean("message","strip_new_lines_on_startend",	fallback=SETTINGS_STRIP_BE_NLS)
-	STRIP_INTEXT_NLS=	config.getboolean("message","strip_intext_new_lines",		fallback=SETTINGS_STRIP_INTEXT_NLS)
+	Settings.NO_DATA=				config.get("strings","no_data",					fallback=Settings.NO_DATA).replace('"','')
+	Settings.SENDER=				config.get("strings","sender",					fallback=Settings.SENDER).replace('"','')
+	Settings.SUBJECT=				config.get("strings","subject",					fallback=Settings.SUBJECT).replace('"','')
+	Settings.DATE=					config.get("strings","date",					fallback=Settings.DATE).replace('"','')
+	Settings.MESSAGE_TRIGGER=			config.get("message","message_trigger",				fallback=Settings.MESSAGE_TRIGGER).replace('"','')
+	Settings.STANDARD_TRIGGER=			config.get("message","standard_trigger",			fallback=Settings.STANDARD_TRIGGER).replace('"','')
+	Settings.DEFAULT_SETTINGS=			config.get("default","default_settings",			fallback=Settings.DEFAULT_SETTINGS).replace('"','')
+	Settings.DELETE_SUBJECT_TRIGGER=		config.getboolean("message","delete_subject_trigger",		fallback=Settings.DELETE_SUBJECT_TRIGGER)
+	Settings.DELETE_MESSAGE_TRIGGER=		config.getboolean("message","delete_message_trigger",		fallback=Settings.DELETE_MESSAGE_TRIGGER)
+	Settings.DELETE_STANDARD_TRIGGER=		config.getboolean("message","delete_standard_trigger",		fallback=Settings.DELETE_STANDARD_TRIGGER)
+	Settings.USE_STANDARD_TRIGGER=			config.getboolean("message","use_standard_trigger",		fallback=Settings.USE_STANDARD_TRIGGER)
+	Settings.USE_PLAIN=				config.getboolean("message","use_plain",			fallback=Settings.USE_PLAIN)
+	Settings.MSPACES_TONL=				config.getboolean("message","multispaces_to_new_lines",		fallback=Settings.MSPACES_TONL)
+	Settings.AMPS_CHANGE=				config.getboolean("message","convert_amp_characters",		fallback=Settings.AMPS_CHANGE)
+	Settings.USE_DEFAULT_SETTINGS_ON_WRONG_PARAM=	config.getboolean("default","use_default_on_wrong_parameter",	fallback=Settings.USE_DEFAULT_SETTINGS_ON_WRONG_PARAM)
+	Settings.STRIP_BE_NLS=				config.getboolean("message","strip_new_lines_on_startend",	fallback=Settings.STRIP_BE_NLS)
+	Settings.STRIP_INTEXT_NLS=			config.getboolean("message","strip_intext_new_lines",		fallback=Settings.STRIP_INTEXT_NLS)
 
 	# Load settings for the chosen fax
 	if (whichFax=="") or (not config.has_section(whichFax)):
 		if whichFax=="":
-			logNotice(STR_NO_PARAM_SET)
+			logNotice(StringTable.NO_PARAMETER_SET)
 		else:
-			logNotice(STR_NO_SECTION+whichFax)
-		if config.getboolean("default","use_default_on_wrong_parameter",fallback=SETTINGS_USE_DEFAULT_ON_WRONG_PARAM):
-			whichFax=config.get("default","default_settings",fallback=SETTINGS_DEFAULT_SETTINGS).replace('"','')
-			logNotice(STR_USING_DEFAULT+whichFax)
+			logNotice(StringTable.NO_SECTION+whichFax)
+		if Settings.USE_DEFAULT_SETTINGS_ON_WRONG_PARAM:
+			whichFax=Settings.DEFAULT_SETTINGS
+			logNotice(StringTable.USING_DEFAULT+whichFax)
 		else:
-			logNotice(STR_NOT_USING_DEFAULT)
+			logNotice(StringTable.NOT_USING_DEFAULT)
 
 	# Get phone number and the subject trigger
-	PHONE_NUMBER=config.get(whichFax,"phone_number",fallback=SETTINGS_PHONE_NUMBER).replace('"','')
-	SUBJECT_TRIGGER=config.get(whichFax,"subject_trigger",fallback=SETTINGS_SUBJECT_TRIG).replace('"','')
+	Settings.PHONE_NUMBER=				config.get(whichFax,"phone_number",				fallback=Settings.PHONE_NUMBER).replace('"','')
+	Settings.SUBJECT_TRIGGER=			config.get(whichFax,"subject_trigger",				fallback=Settings.SUBJECT_TRIGGER).replace('"','')
 
 	# Note that everything has finished
-	settingsLoaded=True
+	Settings.SETTINGS_RELOADED=True
 
 	return
 
@@ -285,7 +244,7 @@ def mailDateToFormat(inp, format="%Y-%m-%d %H:%M:%S"):
 	except:
 		return inp
 
-# Try..Except version of decodeHeader() function with returning NO_DATA on empty strings
+# Try..Except version of decodeHeader() function with returning None on empty strings
 def tryDecodeHeader(header):
 	try:
 		return decodeHeader(header)
@@ -297,29 +256,29 @@ def getMailInfo(message):
 	# Get mail sender
 	s_from=tryDecodeHeader(message["From"])
 	if s_from==None:
-		s_from=NO_DATA
+		s_from=Settings.NO_DATA
 
 	# Get mail subject
 	s_subj=tryDecodeHeader(message["Subject"])
 	if s_subj==None:
-		s_subj=NO_DATA
-	elif (s_subj[0:len(SUBJECT_TRIGGER)]==SUBJECT_TRIGGER) and (len(s_subj)>len(SUBJECT_TRIGGER)):
-		if DELETE_SUBJECT_TRIGGER:
-			s_subj=s_subj[len(SUBJECT_TRIGGER):]
+		s_subj=Settings.NO_DATA
+	elif (s_subj[0:len(Settings.SUBJECT_TRIGGER)]==Settings.SUBJECT_TRIGGER) and (len(s_subj)>len(Settings.SUBJECT_TRIGGER)):
+		if Settings.DELETE_SUBJECT_TRIGGER:
+			s_subj=s_subj[len(Settings.SUBJECT_TRIGGER):]
 
 	# Get mail date
 	s_date=mailDateToFormat(tryDecodeHeader(message["Date"]))
 	if s_date==None:
-		s_date=NO_DATA
+		s_date=Settings.NO_DATA
 
 	# Return information
 	return s_from, s_subj, s_date
 
 # Function for preparing header for the text file
 def prepareTextHeader(s_from, s_subj, s_date, addReturns=True):
-	textHeader =SENDER+s_from+"\n"
-	textHeader+=SUBJECT+s_subj+"\n"
-	textHeader+=DATE+s_date
+	textHeader =Settings.SENDER+s_from+"\n"
+	textHeader+=Settings.SUBJECT+s_subj+"\n"
+	textHeader+=Settings.DATE+s_date
 
 	if addReturns:
 		textHeader+="\n\n"
@@ -340,7 +299,7 @@ def groupTypesIndexes(parts, plainInt, nonPlInt):
 
 # Procedure removing indexes depending on "use plain text" setting
 def plainAndHTMLDecision(parts, plainInt, nonPlInt):
-	if USE_PLAIN:
+	if Settings.USE_PLAIN:
 		if plainInt!=[]:
 			for i in reversed(nonPlInt):
 				parts.pop(i)
@@ -378,7 +337,7 @@ def saveMessagePart(binary, outFile, data, counter, s_subj, s_from):
 			binary=False
 			outFile=str(counter)+".txt"
 			# Log this change
-			logNotice(STR_SAVE_IMAGE_1+s_subj+STR_SAVE_IMAGE_2+s_from+STR_SAVE_IMAGE_3)
+			logNotice(StringTable.SAVE_IMAGE_1+s_subj+StringTable.SAVE_IMAGE_2+s_from+StringTable.SAVE_IMAGE_3)
 	else:
 		# Change mode to binary if data is binary
 		if type(data)==bytes:
@@ -389,7 +348,7 @@ def saveMessagePart(binary, outFile, data, counter, s_subj, s_from):
 			else:
 				outFile=str(counter)+"."+quickImageFormat(data)
 			# Log this change
-			logNotice(STR_SAVE_TEXT_1+s_subj+STR_SAVE_TEXT_2+s_from+STR_SAVE_TEXT_3)
+			logNotice(StringTable.SAVE_TEXT_1+s_subj+StringTable.SAVE_TEXT_2+s_from+StringTable.SAVE_TEXT_3)
 
 	# Open file properly
 	if binary:
@@ -417,12 +376,12 @@ def getAndProcess(passBuffer=None, whichFax=""):
 	everythingOK=True
 
 	# Load settings if needed
-	if not settingsLoaded:
+	if not Settings.SETTINGS_RELOADED:
 		loadSettings(whichFax=whichFax)
 
 	# Stop further processing - there are not any phone number to fax specified!
-	if (PHONE_NUMBER=="") or (PHONE_NUMBER==None):
-		logError(STR_NO_PHONE_NUMBER)
+	if (Settings.PHONE_NUMBER=="") or (Settings.PHONE_NUMBER==None):
+		logError(StringTable.NO_PHONE_NUMBER)
 		everythingOK=False
 		return everythingOK
 
@@ -513,13 +472,13 @@ def getAndProcess(passBuffer=None, whichFax=""):
 			if (contentMainType=="text") and (type(data)==bytes) and (quickImageTest(data)):
 				contentMainType="image"
 				# Log this change
-				logNotice(STR_SAVE_TEXT_1+s_subj+STR_SAVE_TEXT_2+s_from+STR_SAVE_TEXT_3)
+				logNotice(StringTable.SAVE_TEXT_1+s_subj+StringTable.SAVE_TEXT_2+s_from+StringTable.SAVE_TEXT_3)
 
 			# Let's check if image/* isn't in fact a text...
 			if (contentMainType=="image") and (type(data)==str) and (not quickImageTest(data)):
 				contentMainType="text"
 				# Log this change
-				logNotice(STR_SAVE_IMAGE_1+s_subj+STR_SAVE_IMAGE_2+s_from+STR_SAVE_IMAGE_3)
+				logNotice(StringTable.SAVE_IMAGE_1+s_subj+StringTable.SAVE_IMAGE_2+s_from+StringTable.SAVE_IMAGE_3)
 
 			# If we're dealing with text part
 			if contentMainType=="text":
@@ -539,11 +498,11 @@ def getAndProcess(passBuffer=None, whichFax=""):
 				# If not HTML
 				else:
 					# If multispaces to new lines option activated (which should be avoided)
-					if MSPACES_TONL:
+					if Settings.MSPACES_TONL:
 						# well, then convert them
 						data=multiSpacesToReturns(data)
 					# If changing amp characters option activated (which also should be avoided)
-					if AMPS_CHANGE:
+					if Settings.AMPS_CHANGE:
 						# well, then convert them
 						data=changeAmpChars(data)
 
@@ -551,12 +510,12 @@ def getAndProcess(passBuffer=None, whichFax=""):
 				data=data.replace("\r\n","\n")
 
 				# If set to...
-				if STRIP_BE_NLS:
+				if Settings.STRIP_BE_NLS:
 					# then remove any leading and trailing returns (helps not to waste fax machine's recording paper)
 					data=data.lstrip('\n').rstrip('\n')
 
 				# If set to...
-				if STRIP_INTEXT_NLS:
+				if Settings.STRIP_INTEXT_NLS:
 					# then remove any in-text more-than-two returns (also helps not to waste fax machine's recording paper)
 					data=removeDuplicatedNewLines(data)
 
@@ -570,16 +529,16 @@ def getAndProcess(passBuffer=None, whichFax=""):
 					first=False
 
 				# Is message triggered?
-				messageTriggered=(data.find(MESSAGE_TRIGGER)!=-1)
-				if not DELETE_MESSAGE_TRIGGER:
+				messageTriggered=(data.find(Settings.MESSAGE_TRIGGER)!=-1)
+				if not Settings.DELETE_MESSAGE_TRIGGER:
 					messageTriggered=False
 
 				# If we are going to use standard resolution trigger?
-				if USE_STANDARD_TRIGGER:
+				if Settings.USE_STANDARD_TRIGGER:
 					# Is fax going to be sent in standard resolution?
-					standardTriggered=(data.find(STANDARD_TRIGGER)!=-1)
-					if DELETE_STANDARD_TRIGGER:
-						data=data.replace(STANDARD_TRIGGER,"")
+					standardTriggered=(data.find(Settings.STANDARD_TRIGGER)!=-1)
+					if Settings.DELETE_STANDARD_TRIGGER:
+						data=data.replace(Settings.STANDARD_TRIGGER,"")
 
 				# Save text to temporary file
 				if not messageTriggered:
@@ -588,9 +547,9 @@ def getAndProcess(passBuffer=None, whichFax=""):
 						outFile=saveMessagePart(False, outFile, data, counter, s_subj, s_from)
 					except:
 						outFile=""
-						logNotice(STR_SAVE_TEXT_ERROR_1+s_subj+STR_SAVE_TEXT_ERROR_2+s_from+STR_SAVE_TEXT_ERROR_3)
+						logNotice(StringTable.SAVE_TEXT_ERROR_1+s_subj+StringTable.SAVE_TEXT_ERROR_2+s_from+StringTable.SAVE_TEXT_ERROR_3)
 				else:
-					logNotice(STR_TEXT_DISCARDED_1+s_subj+STR_TEXT_DISCARDED_2+s_from+STR_TEXT_DISCARDED_3)
+					logNotice(StringTable.TEXT_DISCARDED_1+s_subj+StringTable.TEXT_DISCARDED_2+s_from+StringTable.TEXT_DISCARDED_3)
 
 				# Set information that message had text part
 				wasTextInMessage=True
@@ -619,13 +578,13 @@ def getAndProcess(passBuffer=None, whichFax=""):
 					outFile=saveMessagePart(True, outFile, data, counter, s_subj, s_from)
 				except:
 					outFile=""
-					logNotice(STR_SAVE_IMAGE_ERROR_1+s_subj+STR_SAVE_IMAGE_ERROR_2+s_from+STR_SAVE_IMAGE_ERROR_3)
+					logNotice(StringTable.SAVE_IMAGE_ERROR_1+s_subj+StringTable.SAVE_IMAGE_ERROR_2+s_from+StringTable.SAVE_IMAGE_ERROR_3)
 
 			# Or something else?
 			else:
 				# Discard it (as it may be vulnerable)
 				outFile=""
-				logNotice(STR_ATTACHMENT_DISC_1+s_subj+STR_ATTACHMENT_DISC_2+s_from+STR_ATTACHMENT_DISC_3)
+				logNotice(StringTable.ATTACHMENT_DISCARDED_1+s_subj+StringTable.ATTACHMENT_DISCARDED_2+s_from+StringTable.ATTACHMENT_DISCARDED_3)
 
 			# Increase the file counter and add file to the list (if there is any)
 			counter+=1
@@ -638,15 +597,15 @@ def getAndProcess(passBuffer=None, whichFax=""):
 			try:
 				# Yeah, a little ugly condition (comparing strings instead of making own, more sophisticated class for variables...)
 				# However, testing if there are any files in the list and if we got any usable information at this point
-				if (fileList==[]) and (s_from==NO_DATA) and (s_subj==NO_DATA) and (s_date==NO_DATA):
-					logNotice(STR_NOTHING_TO_FAX)
+				if (fileList==[]) and (s_from==Settings.NO_DATA) and (s_subj==Settings.NO_DATA) and (s_date==Settings.NO_DATA):
+					logNotice(StringTable.NOTHING_TO_FAX)
 					nothingUseful=True
 				else:
 					# Write '0.txt' file containing just headers and add it at the very beginning of the file list
 					outFile=saveMessagePart(False, "0.txt", prepareTextHeader(s_from,s_subj,s_date,False), 0, s_subj, s_from)
 					fileList=[outFile]+fileList
 			except:
-				logNotice(STR_HEAD_SAVE_ERROR_1+s_subj+STR_HEAD_SAVE_ERROR_2+s_from+STR_HEAD_SAVE_ERROR_3)
+				logNotice(StringTable.HEADER_SAVE_ERROR_1+s_subj+StringTable.HEADER_SAVE_ERROR_2+s_from+StringTable.HEADER_SAVE_ERROR_3)
 
 		# Now, process all the saved files
 		for x in range(len(fileList)):
@@ -691,13 +650,13 @@ def getAndProcess(passBuffer=None, whichFax=""):
 
 				# If reading an image isn't possible, skip it, but leave a notice in log
 				except:
-					logNotice(STR_IMAGE_CORR_ERR_1+s_subj+STR_IMAGE_CORR_ERR_2+s_from+STR_IMAGE_CORR_ERR_3)
+					logNotice(StringTable.IMAGE_CORRUPTED_ERROR_1+s_subj+StringTable.IMAGE_CORRUPTED_ERROR_2+s_from+StringTable.IMAGE_CORRUPTED_ERROR_3)
 
 		# Now prepare the faxspool command
 		if standardTriggered:
-			command=["faxspool","-n",PHONE_NUMBER]
+			command=["faxspool","-n",Settings.PHONE_NUMBER]
 		else:
-			command=["faxspool",PHONE_NUMBER]
+			command=["faxspool",Settings.PHONE_NUMBER]
 
 		for file in fileList:
 			# Add only the TIFFs (additional safety condition)
@@ -711,13 +670,13 @@ def getAndProcess(passBuffer=None, whichFax=""):
 			# If standard resolution triggered
 			if standardTriggered:
 				# Then log it
-				logNotice(STR_STANDARD_RES_1+s_subj+STR_STANDARD_RES_2+s_from+STR_STANDARD_RES_3)
+				logNotice(StringTable.STANDARD_RESOLUTION_1+s_subj+StringTable.STANDARD_RESOLUTION_2+s_from+StringTable.STANDARD_RESOLUTION_3)
 			# Then send it
 			subprocess.check_output(command)
 		else:
 			# If not, let's log it
 			if not nothingUseful:
-				logNotice(STR_NOTHING_TO_FAX_I_1+s_subj+STR_NOTHING_TO_FAX_I_2+s_from+STR_NOTHING_TO_FAX_I_3)
+				logNotice(StringTable.NOTHING_TO_FAX_I_1+s_subj+StringTable.NOTHING_TO_FAX_I_2+s_from+StringTable.NOTHING_TO_FAX_I_3)
 
 	# I think it's good to log any error (so bugs can be reported)
 	except Exception as e:
@@ -731,8 +690,6 @@ def getAndProcess(passBuffer=None, whichFax=""):
 
 	# We're done ;)
 	return everythingOK
-
-################################################################################
 
 # Autorun part
 if __name__ == "__main__":
