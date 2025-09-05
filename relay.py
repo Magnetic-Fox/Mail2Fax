@@ -8,237 +8,251 @@
 # Software intended for use on Linux systems (especially Debian)
 # because of calling conventions and specific system utilities used
 #
-# by Magnetic-Fox, 13.07.2024 - 27.08.2025
+# by Magnetic-Fox, 13.07.2024 - 05.09.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
 import tempfile
-import email
-import email.header
-import email.quoprimime
 import sys
 import os
 import subprocess
 import base64
-import html.parser
 import dateutil
 import datetime
-import cutter
-import PIL.Image
 import configparser
 import io
+import email
+import email.header
+import email.quoprimime
+import html.parser
+import PIL.Image
+import cutter
 
-# Settings class (with default settings applied)
+# Static settings class (with default settings applied)
 class Settings:
-	SETTINGS_FILE=				"relay_settings.ini"
-	SETTINGS_RELOADED=			False
-	NO_DATA=				"(no data)"
-	SENDER=					"Sender:  "
-	SUBJECT=				"Subject: "
-	DATE=					"Date:    "
-	PHONE_NUMBER=				""
-	DELETE_SUBJECT_TRIGGER=			True
-	DELETE_MESSAGE_TRIGGER=			True
-	SUBJECT_TRIGGER=			"[FAX] "
-	MESSAGE_TRIGGER=			"!DISCARD!"
-	STANDARD_TRIGGER=			"!STANDARD!"
-	USE_STANDARD_TRIGGER=			True
-	DELETE_STANDARD_TRIGGER=		True
-	USE_PLAIN=				True
-	MSPACES_TONL=				False
-	AMPS_CHANGE=				False
-	DEFAULT_SETTINGS=			"FAX"
-	USE_DEFAULT_SETTINGS_ON_WRONG_PARAM=	False
-	STRIP_BE_NLS=				True
-	STRIP_INTEXT_NLS=			True
+	SETTINGS_FILE = "relay_settings.ini"
+	SETTINGS_RELOADED = False
+	NO_DATA = "(no data)"
+	SENDER = "Sender:  "
+	SUBJECT = "Subject: "
+	DATE = "Date:    "
+	PHONE_NUMBER = ""	# well, string-like variable is best choice for phone numbers
+	DELETE_SUBJECT_TRIGGER = True
+	DELETE_MESSAGE_TRIGGER = True
+	SUBJECT_TRIGGER = "[FAX] "
+	MESSAGE_TRIGGER = "!DISCARD!"
+	STANDARD_TRIGGER = "!STANDARD!"
+	USE_STANDARD_TRIGGER = True
+	DELETE_STANDARD_TRIGGER = True
+	USE_PLAIN = True
+	MSPACES_TONL = False
+	AMPS_CHANGE = False
+	DEFAULT_SETTINGS = "FAX"
+	USE_DEFAULT_SETTINGS_ON_WRONG_PARAM = False
+	STRIP_BE_NLS = True
+	STRIP_INTEXT_NLS = True
 
-# String table class
+# Static string table class
 class StringTable:
-	LOGGER_ERROR=				"relay.py: error: "
-	LOGGER_NOTICE=				"relay.py: notice: "
-	SAVE_IMAGE_1=				'Going to save image part of the message "'
-	SAVE_IMAGE_2=				'" from "'
-	SAVE_IMAGE_3=				'" as a text file (probably wrong content type in the message)'
-	SAVE_TEXT_1=				'Going to save text part of the message "'
-	SAVE_TEXT_2=				SAVE_IMAGE_2
-	SAVE_TEXT_3=				'" as an image file (probably wrong content type in the message)'
-	NO_PHONE_NUMBER=			"No phone number specified!"
-	SAVE_TEXT_ERROR_1=			'Saving text from message "'
-	SAVE_TEXT_ERROR_2=			SAVE_IMAGE_2
-	SAVE_TEXT_ERROR_3=			'" was not possible'
-	SAVE_IMAGE_ERROR_1=			'Saving image from message "'
-	SAVE_IMAGE_ERROR_2=			SAVE_IMAGE_2
-	SAVE_IMAGE_ERROR_3=			SAVE_TEXT_ERROR_3
-	ATTACHMENT_DISCARDED_1=			'Discarded an attachment from message "'
-	ATTACHMENT_DISCARDED_2=			SAVE_IMAGE_2
-	ATTACHMENT_DISCARDED_3=			'"'
-	NOTHING_TO_FAX=				"There was nothing to fax from the message"
-	HEADER_SAVE_ERROR_1=			'Saving headers from message "'
-	HEADER_SAVE_ERROR_2=			SAVE_IMAGE_2
-	HEADER_SAVE_ERROR_3=			SAVE_TEXT_ERROR_3
-	IMAGE_CORRUPTED_ERROR_1=		'Skipped corrupted image file from the message titled "'
-	IMAGE_CORRUPTED_ERROR_2=		SAVE_IMAGE_2
-	IMAGE_CORRUPTED_ERROR_3=		ATTACHMENT_DISCARDED_3
-	NOTHING_TO_FAX_I_1=			'There was nothing to fax from message titled "'
-	NOTHING_TO_FAX_I_2=			SAVE_IMAGE_2
-	NOTHING_TO_FAX_I_3=			ATTACHMENT_DISCARDED_3
-	NO_SECTION=				'No settings for: '
-	NO_PARAMETER_SET=			'No setting parameter!'
-	USING_DEFAULT=				'Using default, which is: '
-	NOT_USING_DEFAULT=			'Not using default!'
-	TEXT_DISCARDED_1=			'Text part of the message "'
-	TEXT_DISCARDED_2=			SAVE_IMAGE_2
-	TEXT_DISCARDED_3=			'" discarded due to the message trigger'
-	STANDARD_RESOLUTION_1=			'Standard resolution triggered for message "'
-	STANDARD_RESOLUTION_2=			SAVE_IMAGE_2
-	STANDARD_RESOLUTION_3=			ATTACHMENT_DISCARDED_3
+	LOGGER_ERROR = "relay.py: error: "
+	LOGGER_NOTICE = "relay.py: notice: "
+	SAVE_IMAGE_1 = 'Going to save image part of the message "'
+	SAVE_IMAGE_2 = '" from "'
+	SAVE_IMAGE_3 = '" as a text file (probably wrong content type in the message)'
+	SAVE_TEXT_1 = 'Going to save text part of the message "'
+	SAVE_TEXT_2 = SAVE_IMAGE_2
+	SAVE_TEXT_3 = '" as an image file (probably wrong content type in the message)'
+	NO_PHONE_NUMBER = "No phone number specified!"
+	SAVE_TEXT_ERROR_1 = 'Saving text from message "'
+	SAVE_TEXT_ERROR_2 = SAVE_IMAGE_2
+	SAVE_TEXT_ERROR_3 = '" was not possible'
+	SAVE_IMAGE_ERROR_1 = 'Saving image from message "'
+	SAVE_IMAGE_ERROR_2 = SAVE_IMAGE_2
+	SAVE_IMAGE_ERROR_3 = SAVE_TEXT_ERROR_3
+	ATTACHMENT_DISCARDED_1 = 'Discarded an attachment from message "'
+	ATTACHMENT_DISCARDED_2 = SAVE_IMAGE_2
+	ATTACHMENT_DISCARDED_3 = '"'
+	NOTHING_TO_FAX = "There was nothing to fax from the message"
+	HEADER_SAVE_ERROR_1 = 'Saving headers from message "'
+	HEADER_SAVE_ERROR_2 = SAVE_IMAGE_2
+	HEADER_SAVE_ERROR_3 = SAVE_TEXT_ERROR_3
+	IMAGE_CORRUPTED_ERROR_1 = 'Skipped corrupted image file from the message titled "'
+	IMAGE_CORRUPTED_ERROR_2 = SAVE_IMAGE_2
+	IMAGE_CORRUPTED_ERROR_3 = ATTACHMENT_DISCARDED_3
+	NOTHING_TO_FAX_I_1 = 'There was nothing to fax from message titled "'
+	NOTHING_TO_FAX_I_2 = SAVE_IMAGE_2
+	NOTHING_TO_FAX_I_3 = ATTACHMENT_DISCARDED_3
+	NO_SECTION = 'No settings for: '
+	NO_PARAMETER_SET = 'No setting parameter!'
+	USING_DEFAULT = 'Using default, which is: '
+	NOT_USING_DEFAULT = 'Not using default!'
+	TEXT_DISCARDED_1 = 'Text part of the message "'
+	TEXT_DISCARDED_2 = SAVE_IMAGE_2
+	TEXT_DISCARDED_3 = '" discarded due to the message trigger'
+	STANDARD_RESOLUTION_1 = 'Standard resolution triggered for message "'
+	STANDARD_RESOLUTION_2 = SAVE_IMAGE_2
+	STANDARD_RESOLUTION_3 = ATTACHMENT_DISCARDED_3
+
+# Great HTML to text part found on Stack Overflow
+class HTMLFilter(html.parser.HTMLParser):
+	text = ""
+
+	def handle_data(self, data):
+		self.text += data
 
 # Simple new line characters counter
-def countNewLines(data,position):
-	count=0
-	while data.find("\n",position)==position:
-		count=count+1
-		position=position+1
+def countNewLines(data, position):
+	count = 0
+
+	while data.find("\n", position) == position:
+		count = count + 1
+		position = position + 1
+
 	return count
 
 # Simple duplicated new line characters remover
 def removeDuplicatedNewLines(data):
-	while data.find("\n\n\n")!=-1:
-		count=countNewLines(data,data.find("\n\n\n"))
-		data=data.replace("\n"*count,"\n\n")
+	while data.find("\n\n\n") != -1:
+		count = countNewLines(data, data.find("\n\n\n"))
+		data = data.replace("\n" * count, "\n\n")
+
 	return data
 
 # Simple spaces counter
 def spacesCount(string, position):
-	for x in range(position,len(string)):
-		if(string[x]!=' '):
-			return x-position
-	if(position<=len(string)):
-		return len(string)-position
+	for x in range(position, len(string)):
+		if(string[x] != ' '):
+			return x - position
+
+	if(position <= len(string)):
+		return len(string) - position
+
 	else:
 		return 0
 
 # Multi spaces to returns
 def multiSpacesToReturns(string):
-	while(string.find("  ")!=-1):
+	while(string.find("  ") != -1):
 		# Not really optimized line, but I didn't want to use regexes ;)
-		string=string.replace(" "*spacesCount(string,string.find("  ")),"\n"*(spacesCount(string,string.find("  "))-1),1)
+		string = string.replace(" " * spacesCount(string, string.find("  ")), "\n" * (spacesCount(string, string.find("  ")) - 1), 1)
+
 	return string
 
 # Simple procedure for passing error messages to the system log
 def logError(errorString):
-	subprocess.check_output(["logger",StringTable.LOGGER_ERROR+errorString])
+	subprocess.check_output(["logger", StringTable.LOGGER_ERROR + errorString])
 	return
 
 # Simple procedure for passing notices to the system log
 def logNotice(noticeString):
-        subprocess.check_output(["logger",StringTable.LOGGER_NOTICE+noticeString])
+        subprocess.check_output(["logger", StringTable.LOGGER_NOTICE + noticeString])
         return
 
 # Procedure for loading settings from the INI file
-def loadSettings(whichFax="", settingsFile=Settings.SETTINGS_FILE):
-	# Create parser object and try to load the settings file
-	config=configparser.ConfigParser()
-	if config.read(settingsFile)==[]:
-		# Try finding file in the script's path
+def loadSettings(whichFax = "", settingsFile = Settings.SETTINGS_FILE):
+	config = configparser.ConfigParser()
+
+	if config.read(settingsFile) == []:
 		try:
-			settingsFile=os.path.dirname(os.path.realpath(__file__))+"/"+settingsFile
+			# Try finding file in the script's path
+			settingsFile = os.path.dirname(os.path.realpath(__file__)) + "/" + settingsFile
 			config.read(settingsFile)
+
 		except:
 			pass
 
-	# Load settings if possible (or defaults, if not)
-	Settings.NO_DATA=				config.get("strings","no_data",					fallback=Settings.NO_DATA).replace('"','')
-	Settings.SENDER=				config.get("strings","sender",					fallback=Settings.SENDER).replace('"','')
-	Settings.SUBJECT=				config.get("strings","subject",					fallback=Settings.SUBJECT).replace('"','')
-	Settings.DATE=					config.get("strings","date",					fallback=Settings.DATE).replace('"','')
-	Settings.MESSAGE_TRIGGER=			config.get("message","message_trigger",				fallback=Settings.MESSAGE_TRIGGER).replace('"','')
-	Settings.STANDARD_TRIGGER=			config.get("message","standard_trigger",			fallback=Settings.STANDARD_TRIGGER).replace('"','')
-	Settings.DEFAULT_SETTINGS=			config.get("default","default_settings",			fallback=Settings.DEFAULT_SETTINGS).replace('"','')
-	Settings.DELETE_SUBJECT_TRIGGER=		config.getboolean("message","delete_subject_trigger",		fallback=Settings.DELETE_SUBJECT_TRIGGER)
-	Settings.DELETE_MESSAGE_TRIGGER=		config.getboolean("message","delete_message_trigger",		fallback=Settings.DELETE_MESSAGE_TRIGGER)
-	Settings.DELETE_STANDARD_TRIGGER=		config.getboolean("message","delete_standard_trigger",		fallback=Settings.DELETE_STANDARD_TRIGGER)
-	Settings.USE_STANDARD_TRIGGER=			config.getboolean("message","use_standard_trigger",		fallback=Settings.USE_STANDARD_TRIGGER)
-	Settings.USE_PLAIN=				config.getboolean("message","use_plain",			fallback=Settings.USE_PLAIN)
-	Settings.MSPACES_TONL=				config.getboolean("message","multispaces_to_new_lines",		fallback=Settings.MSPACES_TONL)
-	Settings.AMPS_CHANGE=				config.getboolean("message","convert_amp_characters",		fallback=Settings.AMPS_CHANGE)
-	Settings.USE_DEFAULT_SETTINGS_ON_WRONG_PARAM=	config.getboolean("default","use_default_on_wrong_parameter",	fallback=Settings.USE_DEFAULT_SETTINGS_ON_WRONG_PARAM)
-	Settings.STRIP_BE_NLS=				config.getboolean("message","strip_new_lines_on_startend",	fallback=Settings.STRIP_BE_NLS)
-	Settings.STRIP_INTEXT_NLS=			config.getboolean("message","strip_intext_new_lines",		fallback=Settings.STRIP_INTEXT_NLS)
+	# Load main settings if possible (or defaults, if not)
+	Settings.NO_DATA = config.get("strings", "no_data", fallback = Settings.NO_DATA).replace('"', '')
+	Settings.SENDER = config.get("strings", "sender", fallback = Settings.SENDER).replace('"', '')
+	Settings.SUBJECT = config.get("strings", "subject", fallback = Settings.SUBJECT).replace('"', '')
+	Settings.DATE = config.get("strings", "date", fallback = Settings.DATE).replace('"', '')
+	Settings.MESSAGE_TRIGGER = config.get("message", "message_trigger", fallback = Settings.MESSAGE_TRIGGER).replace('"', '')
+	Settings.STANDARD_TRIGGER = config.get("message", "standard_trigger", fallback = Settings.STANDARD_TRIGGER).replace('"', '')
+	Settings.DEFAULT_SETTINGS = config.get("default", "default_settings", fallback = Settings.DEFAULT_SETTINGS).replace('"', '')
+	Settings.DELETE_SUBJECT_TRIGGER = config.getboolean("message", "delete_subject_trigger", fallback = Settings.DELETE_SUBJECT_TRIGGER)
+	Settings.DELETE_MESSAGE_TRIGGER = config.getboolean("message", "delete_message_trigger", fallback = Settings.DELETE_MESSAGE_TRIGGER)
+	Settings.DELETE_STANDARD_TRIGGER = config.getboolean("message", "delete_standard_trigger", fallback = Settings.DELETE_STANDARD_TRIGGER)
+	Settings.USE_STANDARD_TRIGGER = config.getboolean("message", "use_standard_trigger", fallback = Settings.USE_STANDARD_TRIGGER)
+	Settings.USE_PLAIN = config.getboolean("message", "use_plain", fallback = Settings.USE_PLAIN)
+	Settings.MSPACES_TONL = config.getboolean("message", "multispaces_to_new_lines", fallback = Settings.MSPACES_TONL)
+	Settings.AMPS_CHANGE = config.getboolean("message", "convert_amp_characters", fallback = Settings.AMPS_CHANGE)
+	Settings.USE_DEFAULT_SETTINGS_ON_WRONG_PARAM = config.getboolean("default", "use_default_on_wrong_parameter", fallback = Settings.USE_DEFAULT_SETTINGS_ON_WRONG_PARAM)
+	Settings.STRIP_BE_NLS = config.getboolean("message", "strip_new_lines_on_startend", fallback = Settings.STRIP_BE_NLS)
+	Settings.STRIP_INTEXT_NLS = config.getboolean("message", "strip_intext_new_lines", fallback = Settings.STRIP_INTEXT_NLS)
 
-	# Load settings for the chosen fax
-	if (whichFax=="") or (not config.has_section(whichFax)):
-		if whichFax=="":
+	# Check if settings section for chosen fax exists (or set it to default)
+	if (whichFax == "") or (not config.has_section(whichFax)):
+		if whichFax == "":
 			logNotice(StringTable.NO_PARAMETER_SET)
 		else:
-			logNotice(StringTable.NO_SECTION+whichFax)
+			logNotice(StringTable.NO_SECTION + whichFax)
+
 		if Settings.USE_DEFAULT_SETTINGS_ON_WRONG_PARAM:
-			whichFax=Settings.DEFAULT_SETTINGS
-			logNotice(StringTable.USING_DEFAULT+whichFax)
+			whichFax = Settings.DEFAULT_SETTINGS
+			logNotice(StringTable.USING_DEFAULT + whichFax)
 		else:
 			logNotice(StringTable.NOT_USING_DEFAULT)
 
-	# Get phone number and the subject trigger
-	Settings.PHONE_NUMBER=				config.get(whichFax,"phone_number",				fallback=Settings.PHONE_NUMBER).replace('"','')
-	Settings.SUBJECT_TRIGGER=			config.get(whichFax,"subject_trigger",				fallback=Settings.SUBJECT_TRIGGER).replace('"','')
+	# Get phone number and the subject trigger for chosen fax
+	Settings.PHONE_NUMBER = config.get(whichFax, "phone_number", fallback = Settings.PHONE_NUMBER).replace('"', '')
+	Settings.SUBJECT_TRIGGER = config.get(whichFax, "subject_trigger", fallback = Settings.SUBJECT_TRIGGER).replace('"', '')
 
-	# Note that everything has finished
-	Settings.SETTINGS_RELOADED=True
+	Settings.SETTINGS_RELOADED = True
 
 	return
 
-# Great HTML to text part found on Stack Overflow
-class HTMLFilter(html.parser.HTMLParser):
-	text=""
-	def handle_data(self, data):
-		self.text+=data
-
 # Function for finding HTML-style amp character
-def findAmpChar(string, position=0):
-	ampPos=string.find('&',position)
-	endPos=string.find(';',ampPos)
-	if endPos>ampPos:
+def findAmpChar(string, position = 0):
+	ampPos=string.find('&', position)
+	endPos=string.find(';', ampPos)
+
+	if endPos > ampPos:
 		return string[ampPos:endPos+1]
 	else:
 		return ""
 
 # Function for changing all HTML-style amp characters
 def changeAmpChars(string):
-	position=0
-	while(findAmpChar(string,position)!=""):
-		converter=HTMLFilter()
+	position = 0
+
+	while(findAmpChar(string, position) != ""):
+		converter = HTMLFilter()
 		converter.feed(findAmpChar(string))
-		string=string.replace(findAmpChar(string),converter.text)
-		position=string.find("&",position+1)
-		if position<0:
+		string = string.replace(findAmpChar(string), converter.text)
+		position = string.find("&", position + 1)
+
+		if position < 0:
 			break
+
 	return string
 
 # Mail header decoding helper
 def decodeHeader(input):
-	output=""
-	if input!=None:
-		# Try to decode header info
-		parts=email.header.decode_header(input)
-		for part in parts:
-			if part[1]==None:
-				encoding="ascii"
-			else:
-				encoding=part[1]
-			try:
-				output+=str(part[0],encoding)
-			except:
-				output+=part[0]
+	output = ""
 
-	# If output is nothing the set it to None
-	if output=="":
-		output=None
+	if input != None:
+		parts = email.header.decode_header(input)
+		for part in parts:
+			if part[1] == None:
+				encoding = "ascii"
+			else:
+				encoding = part[1]
+
+			try:
+				output += str(part[0], encoding)
+			except:
+				output += part[0]
+
+	# If output is nothing then set it to None
+	if output == "":
+		output = None
 
 	# Return output
 	return output
 
-# Much simplier and better utility to make date/time more readable and to deal with timezones if possible (relatively to the local timezone)
-def mailDateToFormat(inp, format="%Y-%m-%d %H:%M:%S"):
+# Simple and good utility to make date/time more readable and to deal
+# with timezones if possible (relatively to the local machine's timezone)
+def mailDateToFormat(inp, format = "%Y-%m-%d %H:%M:%S"):
 	try:
 		return dateutil.parser.parse(inp).astimezone().strftime(format)
 	except:
@@ -251,70 +265,66 @@ def tryDecodeHeader(header):
 	except:
 		return None
 
-# Function for gathering "From", "Subject" and "Date" headers from message
+# Function for gathering main headers from message ("From", "Subject" and "Date")
 def getMailInfo(message):
-	# Get mail sender
-	s_from=tryDecodeHeader(message["From"])
-	if s_from==None:
-		s_from=Settings.NO_DATA
+	s_from = tryDecodeHeader(message["From"])
+	if s_from == None:
+		s_from = Settings.NO_DATA
 
-	# Get mail subject
-	s_subj=tryDecodeHeader(message["Subject"])
-	if s_subj==None:
-		s_subj=Settings.NO_DATA
-	elif (s_subj[0:len(Settings.SUBJECT_TRIGGER)]==Settings.SUBJECT_TRIGGER) and (len(s_subj)>len(Settings.SUBJECT_TRIGGER)):
+	s_subj = tryDecodeHeader(message["Subject"])
+	if s_subj == None:
+		s_subj = Settings.NO_DATA
+	elif (s_subj[0:len(Settings.SUBJECT_TRIGGER)] == Settings.SUBJECT_TRIGGER) and (len(s_subj) > len(Settings.SUBJECT_TRIGGER)):
 		if Settings.DELETE_SUBJECT_TRIGGER:
-			s_subj=s_subj[len(Settings.SUBJECT_TRIGGER):]
+			s_subj = s_subj[len(Settings.SUBJECT_TRIGGER):]
 
-	# Get mail date
-	s_date=mailDateToFormat(tryDecodeHeader(message["Date"]))
-	if s_date==None:
-		s_date=Settings.NO_DATA
+	s_date = mailDateToFormat(tryDecodeHeader(message["Date"]))
+	if s_date == None:
+		s_date = Settings.NO_DATA
 
-	# Return information
 	return s_from, s_subj, s_date
 
-# Function for preparing header for the text file
-def prepareTextHeader(s_from, s_subj, s_date, addReturns=True):
-	textHeader =Settings.SENDER+s_from+"\n"
-	textHeader+=Settings.SUBJECT+s_subj+"\n"
-	textHeader+=Settings.DATE+s_date
+# Function for preparing header to save as a text file
+def prepareTextHeader(s_from, s_subj, s_date, addReturns = True):
+	textHeader = Settings.SENDER + s_from + "\n"
+	textHeader += Settings.SUBJECT + s_subj + "\n"
+	textHeader += Settings.DATE + s_date
 
 	if addReturns:
-		textHeader+="\n\n"
+		textHeader += "\n\n"
 
 	return textHeader
 
 # Procedure grouping plain-text and non-plain-text parts of the message (indexed output)
 def groupTypesIndexes(parts, plainInt, nonPlInt):
-	index=0
+	index = 0
 	for test in parts:
 		if "text" in test.get_content_type():
 			if "plain" in test.get_content_type():
-				plainInt+=[index]
+				plainInt += [index]
 			else:
-				nonPlInt+=[index]
-		index+=1
+				nonPlInt += [index]
+		index += 1
 	return
 
 # Procedure removing indexes depending on "use plain text" setting
 def plainAndHTMLDecision(parts, plainInt, nonPlInt):
 	if Settings.USE_PLAIN:
-		if plainInt!=[]:
+		if plainInt != []:
 			for i in reversed(nonPlInt):
 				parts.pop(i)
 	else:
-		if nonPlInt!=[]:
+		if nonPlInt != []:
 			for i in reversed(plainInt):
 				parts.pop(i)
 	return
 
 # Binding procedure for plain or non-plain decision
 def decidePlainOrHTML(parts):
-	plainInt=[]
-	nonPlInt=[]
-	groupTypesIndexes(parts,plainInt,nonPlInt)
-	plainAndHTMLDecision(parts,plainInt,nonPlInt)
+	plainInt = []
+	nonPlInt = []
+	groupTypesIndexes(parts, plainInt, nonPlInt)
+	plainAndHTMLDecision(parts, plainInt, nonPlInt)
 	return
 
 # Very simple get image format (if possible) utility
@@ -326,380 +336,363 @@ def quickImageFormat(data):
 
 # Very quick and simple "if-we-have-an-image" test
 def quickImageTest(data):
-	return quickImageFormat(data)!=""
+	return quickImageFormat(data) != ""
 
 # One function to save data to make code more readable
 def saveMessagePart(binary, outFile, data, counter, s_subj, s_from):
 	# Check if mode is correct according to the data
 	if binary:
 		# Change mode to non-binary if data is string
-		if type(data)==str:
-			binary=False
-			outFile=str(counter)+".txt"
-			# Log this change
-			logNotice(StringTable.SAVE_IMAGE_1+s_subj+StringTable.SAVE_IMAGE_2+s_from+StringTable.SAVE_IMAGE_3)
+		if isinstance(data, str):
+			binary = False
+			outFile = str(counter) + ".txt"
+			logNotice(StringTable.SAVE_IMAGE_1 + s_subj + StringTable.SAVE_IMAGE_2 + s_from + StringTable.SAVE_IMAGE_3)
+
 	else:
 		# Change mode to binary if data is binary
-		if type(data)==bytes:
-			binary=True
-			if quickImageFormat(data)=="":
+		if isinstance(data, bytes):
+			binary = True
+
+			if quickImageFormat(data) == "":
 				# Let's say JPG is a default extension in such situation (should be harmless)
-				outFile=str(counter)+".jpg"
+				outFile = str(counter) + ".jpg"
 			else:
-				outFile=str(counter)+"."+quickImageFormat(data)
-			# Log this change
-			logNotice(StringTable.SAVE_TEXT_1+s_subj+StringTable.SAVE_TEXT_2+s_from+StringTable.SAVE_TEXT_3)
+				outFile = str(counter) + "." + quickImageFormat(data)
 
-	# Open file properly
+			logNotice(StringTable.SAVE_TEXT_1 + s_subj + StringTable.SAVE_TEXT_2 + s_from + StringTable.SAVE_TEXT_3)
+
 	if binary:
-		fl=open(outFile,"wb")
+		fl = open(outFile, "wb")
 	else:
-		fl=open(outFile,"w")
+		fl = open(outFile, "w")
 
-	# Write data and close file
 	fl.write(data)
 	fl.close()
 
-	# Finish
 	return outFile
 
-# Main program procedure
-def getAndProcess(passBuffer=None, whichFax=""):
-	# Check and get parameter
-	if whichFax!="":
-		if len(sys.argv)>1:
-			whichFax=sys.argv[1]
-		else:
-			whichFax=""
-
-	# Prepare everything
-	everythingOK=True
-
-	# Load settings if needed
-	if not Settings.SETTINGS_RELOADED:
-		loadSettings(whichFax=whichFax)
-
-	# Stop further processing - there are not any phone number to fax specified!
-	if (Settings.PHONE_NUMBER=="") or (Settings.PHONE_NUMBER==None):
-		logError(StringTable.NO_PHONE_NUMBER)
-		everythingOK=False
-		return everythingOK
-
-	# Initialize...
-	oldDir=os.getcwd()
-	dir=tempfile.TemporaryDirectory()
+# Main program procedure for gathering mail data and process it
+def getAndProcess(passBuffer = None, whichFax = ""):
+	oldDir = os.getcwd()
+	dir = tempfile.TemporaryDirectory()
 	os.chdir(dir.name)
-	outFile=""
-	buffer=""
-	counter=1
-	fileList=[]
-	first=True
-	anything=False
-	wasTextInMessage=False
-	nothingUseful=False
-	messageTriggered=False
-	standardTriggered=False
+	outFile = ""
+	buffer = ""
+	counter = 1	# let's start from 1 at this point
+	fileList = []
+	first = True
+	anything = False
+	wasTextInMessage = False
+	nothingUseful = False
+	messageTriggered = False
+	standardTriggered = False
+	everythingOK = True
 
-	# And now let's do anything needed...
+	if whichFax != "":
+		if len(sys.argv) > 1:
+			whichFax = sys.argv[1]
+		else:
+			whichFax = ""
+
+	if not Settings.SETTINGS_RELOADED:
+		loadSettings(whichFax = whichFax)
+
+	# Stop further processing - there are not any phone number specified for faxing!
+	if (Settings.PHONE_NUMBER == "") or (Settings.PHONE_NUMBER == None):
+		logError(StringTable.NO_PHONE_NUMBER)
+		return False
+
 	try:
-		# If function was executed without buffer parameter...
-		if passBuffer==None:
+		# According to the situation (if parameter passed or not)
+		if passBuffer == None:
 			# Read the message from stdin
 			for line in sys.stdin:
-				buffer+=line
+				buffer += line
 		else:
 			# Read the message from provided data
-			buffer=passBuffer
+			buffer = passBuffer
 
-		# Import it
-		message=email.message_from_string(buffer)
+		# Import message and get main information from headers
+		message = email.message_from_string(buffer)
+		s_from, s_subj, s_date = getMailInfo(message)
 
-		# Get message information
-		s_from,s_subj,s_date=getMailInfo(message)
-
-		# And preprocess
 		if message.is_multipart():
-			parts=message.get_payload()
+			parts = message.get_payload()
 		else:
-			parts=[message]
+			parts = [message]
 
 		# First plain or non-plain decision
 		decidePlainOrHTML(parts)
 
-		# Now process all parts of the message
 		for part in parts:
 			# Unpack text from multipart (plain and html decision)
 			if part.is_multipart():
 				# Second plain or non-plain decision
-				parts2=part.get_payload()
+				parts2 = part.get_payload()
 				decidePlainOrHTML(parts2)
 
-				# Should not be more parts on the list at this point, so simply...
-				part=parts2[0]
+				# Should not be more parts on the list at this point (so get the only one)
+				part = parts2[0]
 
 			# Decode all interesting information from headers at this point
-			encoding=part.get_content_charset()
+			encoding = part.get_content_charset()
 
-			# UTF-8 will be default
-			if encoding==None:
-				encoding="utf-8"
+			# UTF-8 is default (if encoding not specified)
+			if encoding == None:
+				encoding = "utf-8"
 
-			# Decode message (Base64 or Quoted-Printable)
-			if part["Content-Transfer-Encoding"]=="base64":
-				data=base64.b64decode(part.get_payload())
-			elif part["Content-Transfer-Encoding"]=="quoted-printable":
-				data=email.quoprimime.body_decode(part.get_payload()).encode("latin1").decode(encoding)
+			# Decode non plain-text data (Base64 or Quoted-Printable)
+			if part["Content-Transfer-Encoding"] == "base64":
+				data = base64.b64decode(part.get_payload())
+			elif part["Content-Transfer-Encoding"] == "quoted-printable":
+				data = email.quoprimime.body_decode(part.get_payload()).encode("latin1").decode(encoding)
 			else:
-				data=part.get_payload()
+				data = part.get_payload()
 
-			# Get file name properties (to extract extension)
-			# Try also to decode filename (big thanks to MarX, who accidentally found that part missing!)
-			filename=decodeHeader(part.get_filename())
-			if filename==None:
-				fN=""
-				fExt=""
+			# Get file name properties (to extract extension) and also try to
+			# decode a filename (big thanks to MarX, who accidentally found that part missing!)
+			filename = decodeHeader(part.get_filename())
+			if filename == None:
+				fN = ""
+				fExt = ""
 			else:
-				fN,fExt=os.path.splitext(filename)
+				fN, fExt = os.path.splitext(filename)
 
 			# If there is nothing interesting in here, go to the next part
-			if len(data)==0:
+			if len(data) == 0:
 				continue
 
-			# Let's store it in its own variable to make some other tests
-			contentMainType=part.get_content_maintype()
+			# Let's store main type in temporary variable to make further code look better
+			contentMainType = part.get_content_maintype()
 
 			# Let's check if text/plain isn't in fact an image...
-			if (contentMainType=="text") and (type(data)==bytes) and (quickImageTest(data)):
-				contentMainType="image"
-				# Log this change
-				logNotice(StringTable.SAVE_TEXT_1+s_subj+StringTable.SAVE_TEXT_2+s_from+StringTable.SAVE_TEXT_3)
+			if (contentMainType == "text") and isinstance(data, bytes) and quickImageTest(data):
+				contentMainType = "image"
+				logNotice(StringTable.SAVE_TEXT_1 + s_subj + StringTable.SAVE_TEXT_2 + s_from + StringTable.SAVE_TEXT_3)
 
 			# Let's check if image/* isn't in fact a text...
-			if (contentMainType=="image") and (type(data)==str) and (not quickImageTest(data)):
-				contentMainType="text"
-				# Log this change
-				logNotice(StringTable.SAVE_IMAGE_1+s_subj+StringTable.SAVE_IMAGE_2+s_from+StringTable.SAVE_IMAGE_3)
+			if (contentMainType == "image") and isinstance(data, str) and not quickImageTest(data):
+				contentMainType = "text"
+				logNotice(StringTable.SAVE_IMAGE_1 + s_subj + StringTable.SAVE_IMAGE_2 + s_from + StringTable.SAVE_IMAGE_3)
 
-			# If we're dealing with text part
-			if contentMainType=="text":
-				# Get rid of "bytes" type (which is a bit annoying thing in Python)
+			if contentMainType == "text":
+				# Get rid of "bytes" type if possible
 				try:
-					data=str(data,encoding)
+					data = str(data, encoding)
 				except:
-					data=str(data)
+					data = str(data)
 
-				# If HTML then convert it to text
-				if part.get_content_subtype()=="html":
-					# Replace any <br> and <br /> to the new lines (well, this simple HTMLFilter can't do this)
-					data=data.replace("<br>","\n").replace("<br />","\n")
-					converter=HTMLFilter()
+				if part.get_content_subtype() == "html":
+					# Replace any <br> and <br /> to the new lines, because this simple HTMLFilter can't do this automatically
+					data = data.replace("<br>", "\n").replace("<br />", "\n")
+					converter = HTMLFilter()
 					converter.feed(data)
-					data=converter.text
-				# If not HTML
+					# This will simply convert HTML to the plain-text
+					data = converter.text
 				else:
-					# If multispaces to new lines option activated (which should be avoided)
+					# Multispaces to new lines option
 					if Settings.MSPACES_TONL:
-						# well, then convert them
-						data=multiSpacesToReturns(data)
-					# If changing amp characters option activated (which also should be avoided)
+						data = multiSpacesToReturns(data)
+					# Changing amp characters option
 					if Settings.AMPS_CHANGE:
-						# well, then convert them
-						data=changeAmpChars(data)
+						data = changeAmpChars(data)
 
 				# Convert any CR+LF to just LF (big thanks to MariuszK, who accidentally found that part missing!)
-				data=data.replace("\r\n","\n")
+				data = data.replace("\r\n", "\n")
 
-				# If set to...
-				if Settings.STRIP_BE_NLS:
-					# then remove any leading and trailing returns (helps not to waste fax machine's recording paper)
-					data=data.lstrip('\n').rstrip('\n')
-
-				# If set to...
-				if Settings.STRIP_INTEXT_NLS:
-					# then remove any in-text more-than-two returns (also helps not to waste fax machine's recording paper)
-					data=removeDuplicatedNewLines(data)
-
-				# And this is out first time
+				# Add header to the text part (if possible)
 				if first:
-					# Then add some information from the header (if possible)
-					if len(data)==0:
-						data=prepareTextHeader(s_from,s_subj,s_date,False)
+					if len(data) == 0:
+						data = prepareTextHeader(s_from, s_subj, s_date, False)
 					else:
-						data=prepareTextHeader(s_from,s_subj,s_date)+data
-					first=False
+						data = prepareTextHeader(s_from, s_subj, s_date) + data
 
-				# Is message triggered?
-				messageTriggered=(data.find(Settings.MESSAGE_TRIGGER)!=-1)
-				if not Settings.DELETE_MESSAGE_TRIGGER:
-					messageTriggered=False
+					first = False
 
-				# If we are going to use standard resolution trigger?
+				# Are we going to use message triggers?
+				if Settings.DELETE_MESSAGE_TRIGGER:
+					# Is message triggered?
+					messageTriggered = (data.find(Settings.MESSAGE_TRIGGER) != -1)
+
+				# Are we going to use standard resolution trigger?
 				if Settings.USE_STANDARD_TRIGGER:
-					# Is fax going to be sent in standard resolution?
-					standardTriggered=(data.find(Settings.STANDARD_TRIGGER)!=-1)
+					# Is message meant to be sent in the standard resolution?
+					standardTriggered = (data.find(Settings.STANDARD_TRIGGER) != -1)
 					if Settings.DELETE_STANDARD_TRIGGER:
-						data=data.replace(Settings.STANDARD_TRIGGER,"")
+						data=data.replace(Settings.STANDARD_TRIGGER, "")
+
+				# Moving those two options below will probably make checks above little slower
+				# (in situations with e-mails with huge amount of new lines at the beginning or
+				# at the end), but will avoid situations, where there are huge amount of lines
+				# with "!STANDARD!" trigger changed to the empty lines (with returns only)
+
+				# Remove leading and trailing new lines option
+				if Settings.STRIP_BE_NLS:
+					data = data.lstrip('\n').rstrip('\n')
+
+				# Remove in-text more-than-two new lines option
+				if Settings.STRIP_INTEXT_NLS:
+					data = removeDuplicatedNewLines(data)
 
 				# Save text to temporary file
 				if not messageTriggered:
-					outFile=str(counter)+".txt"
+					outFile = str(counter) + ".txt"
+
 					try:
-						outFile=saveMessagePart(False, outFile, data, counter, s_subj, s_from)
+						outFile = saveMessagePart(False, outFile, data, counter, s_subj, s_from)
 					except:
-						outFile=""
-						logNotice(StringTable.SAVE_TEXT_ERROR_1+s_subj+StringTable.SAVE_TEXT_ERROR_2+s_from+StringTable.SAVE_TEXT_ERROR_3)
+						outFile = ""
+						logNotice(StringTable.SAVE_TEXT_ERROR_1 + s_subj + StringTable.SAVE_TEXT_ERROR_2 + s_from + StringTable.SAVE_TEXT_ERROR_3)
+
 				else:
-					logNotice(StringTable.TEXT_DISCARDED_1+s_subj+StringTable.TEXT_DISCARDED_2+s_from+StringTable.TEXT_DISCARDED_3)
+					logNotice(StringTable.TEXT_DISCARDED_1 + s_subj + StringTable.TEXT_DISCARDED_2 + s_from + StringTable.TEXT_DISCARDED_3)
 
-				# Set information that message had text part
-				wasTextInMessage=True
+				wasTextInMessage = True
 
-			# Or maybe we got an image?
-			elif contentMainType=="image":
-				if(fExt!=""):
-					# Additional test if attachment has correct extension
-					if fExt.lower()==".txt":
-						if quickImageFormat(data)=="":
+			elif contentMainType == "image":
+				if(fExt != ""):
+					# Additional test if attachment has correct extension (for too quick locally sent messages with image attachments)
+					if fExt.lower() == ".txt":
+						if quickImageFormat(data) == "":
 							# Let's say JPG is a default extension if it is unknown
-							fExt=".jpg"
+							fExt = ".jpg"
 						else:
-							fExt="."+quickImageFormat(data)
-					outFile=str(counter)+fExt
-				elif(quickImageFormat(data)!=""):
+							fExt = "." + quickImageFormat(data)
+
+					outFile = str(counter) + fExt
+
+				elif(quickImageFormat(data) != ""):
 					# Try to guess image format
-					fExt="."+quickImageFormat(data)
+					fExt = "." + quickImageFormat(data)
 					# Update filename (again, big thanks to MarX, who accidentally found that part missing!)
-					outFile=str(counter)+fExt
+					outFile = str(counter) + fExt
+
 				else:
-					# Default...
-					outFile=str(counter)+".jpg"
+					# Try default image extension (using simply .jpg should be harmless)
+					outFile = str(counter) + ".jpg"
+
 				try:
 					# Save it too
-					outFile=saveMessagePart(True, outFile, data, counter, s_subj, s_from)
-				except:
-					outFile=""
-					logNotice(StringTable.SAVE_IMAGE_ERROR_1+s_subj+StringTable.SAVE_IMAGE_ERROR_2+s_from+StringTable.SAVE_IMAGE_ERROR_3)
+					outFile = saveMessagePart(True, outFile, data, counter, s_subj, s_from)
 
-			# Or something else?
+				except:
+					outFile = ""
+					logNotice(StringTable.SAVE_IMAGE_ERROR_1 + s_subj + StringTable.SAVE_IMAGE_ERROR_2 + s_from + StringTable.SAVE_IMAGE_ERROR_3)
+
 			else:
-				# Discard it (as it may be vulnerable)
-				outFile=""
-				logNotice(StringTable.ATTACHMENT_DISCARDED_1+s_subj+StringTable.ATTACHMENT_DISCARDED_2+s_from+StringTable.ATTACHMENT_DISCARDED_3)
+				# If part of a message is not a text nor an image, then discard it (as it may be vulnerable)
+				outFile = ""
+				logNotice(StringTable.ATTACHMENT_DISCARDED_1 + s_subj + StringTable.ATTACHMENT_DISCARDED_2 + s_from + StringTable.ATTACHMENT_DISCARDED_3)
 
 			# Increase the file counter and add file to the list (if there is any)
-			counter+=1
+			counter += 1
+			if outFile != "":
+				fileList += [outFile]
 
-			if outFile!="":
-				fileList+=[outFile]
-
-		# If message had no text part, then add just the header
+		# If message had no text part, then just add only a header
 		if not wasTextInMessage:
 			try:
-				# Yeah, a little ugly condition (comparing strings instead of making own, more sophisticated class for variables...)
-				# However, testing if there are any files in the list and if we got any usable information at this point
-				if (fileList==[]) and (s_from==Settings.NO_DATA) and (s_subj==Settings.NO_DATA) and (s_date==Settings.NO_DATA):
+				# The most ugly condition in this code (sorry to all for that)...
+				if (fileList == []) and (s_from == Settings.NO_DATA) and (s_subj == Settings.NO_DATA) and (s_date == Settings.NO_DATA):
 					logNotice(StringTable.NOTHING_TO_FAX)
-					nothingUseful=True
+					nothingUseful = True
 				else:
 					# Write '0.txt' file containing just headers and add it at the very beginning of the file list
-					outFile=saveMessagePart(False, "0.txt", prepareTextHeader(s_from,s_subj,s_date,False), 0, s_subj, s_from)
-					fileList=[outFile]+fileList
-			except:
-				logNotice(StringTable.HEADER_SAVE_ERROR_1+s_subj+StringTable.HEADER_SAVE_ERROR_2+s_from+StringTable.HEADER_SAVE_ERROR_3)
+					outFile = saveMessagePart(False, "0.txt", prepareTextHeader(s_from, s_subj, s_date, False), 0, s_subj, s_from)
+					fileList = [outFile] + fileList
 
-		# Now, process all the saved files
+			except:
+				logNotice(StringTable.HEADER_SAVE_ERROR_1 + s_subj + StringTable.HEADER_SAVE_ERROR_2 + s_from + StringTable.HEADER_SAVE_ERROR_3)
+
+		# Now convert all the saved files (text and images) to the TIFFs
 		for x in range(len(fileList)):
-			fN,fExt=os.path.splitext(fileList[x])
-			if fExt==".txt":
+			fN, fExt = os.path.splitext(fileList[x])
+
+			if fExt == ".txt":
 				# Convert text files to G3 TIFFs
-				paps=subprocess.Popen(["paps","--top-margin=6","--font=Monospace 10",fileList[x]], stdout=subprocess.PIPE)
-				subprocess.check_output(["gs","-sDEVICE=tiffg3","-sOutputFile="+fN+".tiff","-dBATCH","-dNOPAUSE","-dSAFER","-dQUIET","-"], stdin=paps.stdout)
+				paps = subprocess.Popen(["paps", "--top-margin=6", "--font=Monospace 10", fileList[x]], stdout = subprocess.PIPE)
+				subprocess.check_output(["gs", "-sDEVICE=tiffg3", "-sOutputFile=" + fN + ".tiff", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-dQUIET", "-"], stdin = paps.stdout)
 				paps.wait()
 
 				# Update the file name on the list
-				fileList[x]=fN+".tiff"
+				fileList[x] = fN + ".tiff"
 
 				# And apply the cutter (to prevent wasting paper on a fax machine)
 				cutter.loadAndCrop(fileList[x])
+
 			else:
 				# Try to convert an image (if possible)
 				try:
-					# Temporary variable
-					rotate=False
+					rotate = False
 
-					# Test if image is landscape or portrait
-					img=PIL.Image.open(fileList[x])
-					width,height=img.size
+					# Test if image has to be rotated
+					img = PIL.Image.open(fileList[x])
+					width, height = img.size
 					img.close()
-					rotate=width>height
+					rotate = width > height
 
 					# Prepare command
-					command=["convert",fileList[x]]
+					command = ["convert", fileList[x]]
 
-					# Rotate image if necessary
 					if rotate:
-						command+=["-rotate","90"]
+						command += ["-rotate", "90"]
 
-					command+=["-resize","1664>","-background","white","-gravity","northwest","-splice","32x0","-background","white","-gravity","northeast","-splice","32x0",fN+".tiff"]
+					command += ["-resize", "1664>", "-background", "white", "-gravity", "northwest", "-splice", "32x0", "-background", "white", "-gravity", "northeast", "-splice", "32x0", fN + ".tiff"]
 
 					# Convert images to TIFFs with auto-size and auto-margin
 					subprocess.check_output(command)
 
 					# Update the file name on the list
-					fileList[x]=fN+".tiff"
+					fileList[x] = fN + ".tiff"
 
-				# If reading an image isn't possible, skip it, but leave a notice in log
 				except:
-					logNotice(StringTable.IMAGE_CORRUPTED_ERROR_1+s_subj+StringTable.IMAGE_CORRUPTED_ERROR_2+s_from+StringTable.IMAGE_CORRUPTED_ERROR_3)
+					logNotice(StringTable.IMAGE_CORRUPTED_ERROR_1 + s_subj + StringTable.IMAGE_CORRUPTED_ERROR_2 + s_from + StringTable.IMAGE_CORRUPTED_ERROR_3)
 
 		# Now prepare the faxspool command
 		if standardTriggered:
-			command=["faxspool","-n",Settings.PHONE_NUMBER]
+			command = ["faxspool", "-n", Settings.PHONE_NUMBER]
 		else:
-			command=["faxspool",Settings.PHONE_NUMBER]
+			command = ["faxspool", Settings.PHONE_NUMBER]
 
 		for file in fileList:
-			# Add only the TIFFs (additional safety condition)
+			# Add only TIFFs to the command (additional safety condition)
 			if ".tiff" in file:
 				if not anything:
 					anything=True
-				command+=[file]
+				command += [file]
 
-		# If we got anything that can be sent
+		# Run faxspool command only if there are anything to fax
 		if anything:
-			# If standard resolution triggered
 			if standardTriggered:
-				# Then log it
-				logNotice(StringTable.STANDARD_RESOLUTION_1+s_subj+StringTable.STANDARD_RESOLUTION_2+s_from+StringTable.STANDARD_RESOLUTION_3)
-			# Then send it
-			subprocess.check_output(command)
-		else:
-			# If not, let's log it
-			if not nothingUseful:
-				logNotice(StringTable.NOTHING_TO_FAX_I_1+s_subj+StringTable.NOTHING_TO_FAX_I_2+s_from+StringTable.NOTHING_TO_FAX_I_3)
+				logNotice(StringTable.STANDARD_RESOLUTION_1 + s_subj + StringTable.STANDARD_RESOLUTION_2 + s_from+StringTable.STANDARD_RESOLUTION_3)
 
-	# I think it's good to log any error (so bugs can be reported)
+			subprocess.check_output(command)
+
+		else:
+			if not nothingUseful:
+				logNotice(StringTable.NOTHING_TO_FAX_I_1 + s_subj + StringTable.NOTHING_TO_FAX_I_2 + s_from + StringTable.NOTHING_TO_FAX_I_3)
+
 	except Exception as e:
 		logError(str(e))
-		everythingOK=False
+		everythingOK = False
 
-	# Finish everything
 	finally:
 		os.chdir(oldDir)
 		dir.cleanup()
 
-	# We're done ;)
 	return everythingOK
 
 # Autorun part
 if __name__ == "__main__":
 	# Try to get and process incomming message
 	try:
-		if len(sys.argv)>1:
-			whichFax=sys.argv[1]
+		if len(sys.argv) > 1:
+			whichFax = sys.argv[1]
 		else:
-			whichFax=""
-		loadSettings(whichFax=whichFax)
+			whichFax = ""
+
+		loadSettings(whichFax = whichFax)
+
 		if getAndProcess():
 			exit(0)
 		else:
