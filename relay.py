@@ -3,12 +3,12 @@
 # E-Mail to Fax Relay Utility for Procmail and MGetty-Fax (faxspool)
 #
 # Utilizing PAPS, GhostScript, ImageMagick (convert), Pillow (PIL)
-# and system logger (logger)
+# and system logger (logger; now via Python modules)
 #
 # Software intended for use on Linux systems (especially Debian)
 # because of calling conventions and specific system utilities used
 #
-# by Magnetic-Fox, 13.07.2024 - 05.09.2025
+# by Magnetic-Fox, 13.07.2024 - 16.10.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -21,12 +21,18 @@ import dateutil
 import datetime
 import configparser
 import io
+import logging
+import logging.handlers
 import email
 import email.header
 import email.quoprimime
 import html.parser
 import PIL.Image
+import RelayStringTable as StringTable
 import cutter
+
+# Global variable for logger (to be replaced by logging class someday...)
+preparedLogger = None
 
 # Static settings class (with default settings applied)
 class Settings:
@@ -51,47 +57,7 @@ class Settings:
 	USE_DEFAULT_SETTINGS_ON_WRONG_PARAM = False
 	STRIP_BE_NLS = True
 	STRIP_INTEXT_NLS = True
-
-# Static string table class
-class StringTable:
-	LOGGER_ERROR = "relay.py: error: "
-	LOGGER_NOTICE = "relay.py: notice: "
-	SAVE_IMAGE_1 = 'Going to save image part of the message "'
-	SAVE_IMAGE_2 = '" from "'
-	SAVE_IMAGE_3 = '" as a text file (probably wrong content type in the message)'
-	SAVE_TEXT_1 = 'Going to save text part of the message "'
-	SAVE_TEXT_2 = SAVE_IMAGE_2
-	SAVE_TEXT_3 = '" as an image file (probably wrong content type in the message)'
-	NO_PHONE_NUMBER = "No phone number specified!"
-	SAVE_TEXT_ERROR_1 = 'Saving text from message "'
-	SAVE_TEXT_ERROR_2 = SAVE_IMAGE_2
-	SAVE_TEXT_ERROR_3 = '" was not possible'
-	SAVE_IMAGE_ERROR_1 = 'Saving image from message "'
-	SAVE_IMAGE_ERROR_2 = SAVE_IMAGE_2
-	SAVE_IMAGE_ERROR_3 = SAVE_TEXT_ERROR_3
-	ATTACHMENT_DISCARDED_1 = 'Discarded an attachment from message "'
-	ATTACHMENT_DISCARDED_2 = SAVE_IMAGE_2
-	ATTACHMENT_DISCARDED_3 = '"'
-	NOTHING_TO_FAX = "There was nothing to fax from the message"
-	HEADER_SAVE_ERROR_1 = 'Saving headers from message "'
-	HEADER_SAVE_ERROR_2 = SAVE_IMAGE_2
-	HEADER_SAVE_ERROR_3 = SAVE_TEXT_ERROR_3
-	IMAGE_CORRUPTED_ERROR_1 = 'Skipped corrupted image file from the message titled "'
-	IMAGE_CORRUPTED_ERROR_2 = SAVE_IMAGE_2
-	IMAGE_CORRUPTED_ERROR_3 = ATTACHMENT_DISCARDED_3
-	NOTHING_TO_FAX_I_1 = 'There was nothing to fax from message titled "'
-	NOTHING_TO_FAX_I_2 = SAVE_IMAGE_2
-	NOTHING_TO_FAX_I_3 = ATTACHMENT_DISCARDED_3
-	NO_SECTION = 'No settings for: '
-	NO_PARAMETER_SET = 'No setting parameter!'
-	USING_DEFAULT = 'Using default, which is: '
-	NOT_USING_DEFAULT = 'Not using default!'
-	TEXT_DISCARDED_1 = 'Text part of the message "'
-	TEXT_DISCARDED_2 = SAVE_IMAGE_2
-	TEXT_DISCARDED_3 = '" discarded due to the message trigger'
-	STANDARD_RESOLUTION_1 = 'Standard resolution triggered for message "'
-	STANDARD_RESOLUTION_2 = SAVE_IMAGE_2
-	STANDARD_RESOLUTION_3 = ATTACHMENT_DISCARDED_3
+	DEFAULT_LOGGER_ADDRESS = "/dev/log"
 
 # Great HTML to text part found on Stack Overflow
 class HTMLFilter(html.parser.HTMLParser):
@@ -138,15 +104,43 @@ def multiSpacesToReturns(string):
 
 	return string
 
+# Simple procedure for preparing system logger to use globally in this script (to be changed to the logging class someday...)
+def prepareGlobalLogger():
+	global preparedLogger
+
+	if preparedLogger == None:
+		preparedLogger = prepareLogger(loggerAddress = Settings.DEFAULT_LOGGER_ADDRESS)
+
+	return
+
+# Simple logger preparation function
+def prepareLogger(loggerName = __name__, loggerAddress = Settings.DEFAULT_LOGGER_ADDRESS):
+	logger = logging.getLogger(loggerName)
+	handler = logging.handlers.SysLogHandler(address = loggerAddress)
+
+	logger.setLevel(logging.INFO)
+	logger.addHandler(handler)
+
+	return logger
+
+# Simple logging utility
+def logInfo(message, logger = None, prefix = ""):
+	if None:
+		raise Exception("No logger selected!")
+
+	logger.info(prefix + message)
+
+	return
+
 # Simple procedure for passing error messages to the system log
 def logError(errorString):
-	subprocess.check_output(["logger", StringTable.LOGGER_ERROR + errorString])
+	logInfo(logger = preparedLogger, prefix = StringTable.LOGGER_ERROR, message = errorString)
 	return
 
 # Simple procedure for passing notices to the system log
 def logNotice(noticeString):
-        subprocess.check_output(["logger", StringTable.LOGGER_NOTICE + noticeString])
-        return
+	logInfo(logger = preparedLogger, prefix = StringTable.LOGGER_NOTICE, message = noticeString)
+	return
 
 # Procedure for loading settings from the INI file
 def loadSettings(whichFax = "", settingsFile = Settings.SETTINGS_FILE):
@@ -179,6 +173,10 @@ def loadSettings(whichFax = "", settingsFile = Settings.SETTINGS_FILE):
 	Settings.USE_DEFAULT_SETTINGS_ON_WRONG_PARAM = config.getboolean("default", "use_default_on_wrong_parameter", fallback = Settings.USE_DEFAULT_SETTINGS_ON_WRONG_PARAM)
 	Settings.STRIP_BE_NLS = config.getboolean("message", "strip_new_lines_on_startend", fallback = Settings.STRIP_BE_NLS)
 	Settings.STRIP_INTEXT_NLS = config.getboolean("message", "strip_intext_new_lines", fallback = Settings.STRIP_INTEXT_NLS)
+	Settings.DEFAULT_LOGGER_ADDRESS = config.get("logger", "address", fallback = Settings.DEFAULT_LOGGER_ADDRESS).replace('"', '')
+
+	# Prepare global logger after loading user settings (and logger address too)
+	prepareGlobalLogger()
 
 	# Check if settings section for chosen fax exists (or set it to default)
 	if (whichFax == "") or (not config.has_section(whichFax)):
@@ -371,6 +369,38 @@ def saveMessagePart(binary, outFile, data, counter, s_subj, s_from):
 
 	return outFile
 
+# Procedure for converting text to G3 TIFF image
+def convertTextToTIFF(fileName, fileNameWithoutExt):
+	paps = subprocess.Popen(["paps", "--top-margin=6", "--font=Monospace 10", fileName], stdout = subprocess.PIPE)
+	subprocess.check_output(["gs", "-sDEVICE=tiffg3", "-sOutputFile=" + fileNameWithoutExt + ".tiff", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-dQUIET", "-"], stdin = paps.stdout)
+	paps.wait()
+
+	return
+
+# Procedure for converting images to TIFF files (to be extended someday - I have some ideas...)
+def convertImageToTIFF(fileName, fileNameWithoutExt):
+	rotate = False
+
+	# Test if image has to be rotated
+	img = PIL.Image.open(fileName)
+	width, height = img.size
+	img.close()
+	rotate = width > height
+
+	# Prepare command
+	command = ["convert", fileName]
+
+	if rotate:
+		command += ["-rotate", "90"]
+
+	command += ["-resize", "1664>", "-background", "white", "-gravity", "northwest", "-splice", "32x0", "-background", "white", "-gravity", "northeast", "-splice", "32x0", fileNameWithoutExt + ".tiff"]
+
+	# Convert images to TIFFs with auto-size and auto-margin
+	subprocess.check_output(command)
+
+	return
+
+
 # Main program procedure for gathering mail data and process it
 def getAndProcess(passBuffer = None, whichFax = ""):
 	oldDir = os.getcwd()
@@ -387,6 +417,9 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 	messageTriggered = False
 	standardTriggered = False
 	everythingOK = True
+
+	# Prepare global logger if needed
+	prepareGlobalLogger()
 
 	if whichFax != "":
 		if len(sys.argv) > 1:
@@ -521,10 +554,10 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 					if Settings.DELETE_STANDARD_TRIGGER:
 						data=data.replace(Settings.STANDARD_TRIGGER, "")
 
-				# Moving those two options below will probably make checks above little slower
-				# (in situations with e-mails with huge amount of new lines at the beginning or
+				# Having those two conditions here below will probably make checks above a little slower
+				# (in situations with e-mails containing huge amount of new lines at the beginning or
 				# at the end), but will avoid situations, where there are huge amount of lines
-				# with "!STANDARD!" trigger changed to the empty lines (with returns only)
+				# with "!STANDARD!" trigger that will be changed to the empty lines and then not stripped
 
 				# Remove leading and trailing new lines option
 				if Settings.STRIP_BE_NLS:
@@ -608,11 +641,10 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 		for x in range(len(fileList)):
 			fN, fExt = os.path.splitext(fileList[x])
 
+			# Text files
 			if fExt == ".txt":
 				# Convert text files to G3 TIFFs
-				paps = subprocess.Popen(["paps", "--top-margin=6", "--font=Monospace 10", fileList[x]], stdout = subprocess.PIPE)
-				subprocess.check_output(["gs", "-sDEVICE=tiffg3", "-sOutputFile=" + fN + ".tiff", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-dQUIET", "-"], stdin = paps.stdout)
-				paps.wait()
+				convertTextToTIFF(fileList[x], fN)
 
 				# Update the file name on the list
 				fileList[x] = fN + ".tiff"
@@ -620,32 +652,17 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 				# And apply the cutter (to prevent wasting paper on a fax machine)
 				cutter.loadAndCrop(fileList[x])
 
+			# Image files
 			else:
-				# Try to convert an image (if possible)
 				try:
-					rotate = False
-
-					# Test if image has to be rotated
-					img = PIL.Image.open(fileList[x])
-					width, height = img.size
-					img.close()
-					rotate = width > height
-
-					# Prepare command
-					command = ["convert", fileList[x]]
-
-					if rotate:
-						command += ["-rotate", "90"]
-
-					command += ["-resize", "1664>", "-background", "white", "-gravity", "northwest", "-splice", "32x0", "-background", "white", "-gravity", "northeast", "-splice", "32x0", fN + ".tiff"]
-
-					# Convert images to TIFFs with auto-size and auto-margin
-					subprocess.check_output(command)
+					# Try to convert an image (if possible)
+					convertImageToTIFF(fileList[x], fN)
 
 					# Update the file name on the list
 					fileList[x] = fN + ".tiff"
 
 				except:
+					# Probably corrupted image
 					logNotice(StringTable.IMAGE_CORRUPTED_ERROR_1 + s_subj + StringTable.IMAGE_CORRUPTED_ERROR_2 + s_from + StringTable.IMAGE_CORRUPTED_ERROR_3)
 
 		# Now prepare the faxspool command
@@ -664,7 +681,7 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 		# Run faxspool command only if there are anything to fax
 		if anything:
 			if standardTriggered:
-				logNotice(StringTable.STANDARD_RESOLUTION_1 + s_subj + StringTable.STANDARD_RESOLUTION_2 + s_from+StringTable.STANDARD_RESOLUTION_3)
+				logNotice(StringTable.STANDARD_RESOLUTION_1 + s_subj + StringTable.STANDARD_RESOLUTION_2 + s_from + StringTable.STANDARD_RESOLUTION_3)
 
 			subprocess.check_output(command)
 
