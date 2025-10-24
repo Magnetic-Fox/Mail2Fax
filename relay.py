@@ -8,9 +8,10 @@
 # Software intended for use on Linux systems (especially Debian)
 # because of calling conventions and specific system utilities used
 #
-# by Magnetic-Fox, 13.07.2024 - 20.10.2025
+# by Magnetic-Fox, 13.07.2024 - 24.10.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
+
 
 import tempfile
 import sys
@@ -21,6 +22,7 @@ import dateutil
 import datetime
 import configparser
 import io
+import gzip
 import logging
 import logging.handlers
 import email
@@ -30,6 +32,7 @@ import html.parser
 import PIL.Image
 import StringTable
 import cutter
+
 
 # Global variable for logger (to be replaced by logging class someday...)
 preparedLogger = None
@@ -58,6 +61,14 @@ class Settings:
 	STRIP_BE_NLS = True
 	STRIP_INTEXT_NLS = True
 	DEFAULT_LOGGER_ADDRESS = "/dev/log"
+	ROUTE_TO_FAX = ""
+	TEXT_FONT_NAME = "Monospace"
+	TEXT_FONT_SIZE = 10
+	TEXT_TOP_MARGIN = 6
+	DATE_TIMEZONE = ""	# will be interpreted as local timezone
+	DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+	LOG_MESSAGE_TO_FILE = True
+	MESSAGE_LOG_FILE = "/var/log/Mail2Fax/mails.gz"
 
 # Great HTML to text part found on Stack Overflow
 class HTMLFilter(html.parser.HTMLParser):
@@ -137,6 +148,11 @@ def logError(errorString):
 	logInfo(logger = preparedLogger, prefix = StringTable.LOGGER_ERROR, message = errorString)
 	return
 
+# Simple procedure for passing warnings to the system log
+def logWarning(warningString):
+	logInfo(logger = preparedLogger, prefix = StringTable.LOGGER_WARNING, message = warningString)
+	return
+
 # Simple procedure for passing notices to the system log
 def logNotice(noticeString):
 	logInfo(logger = preparedLogger, prefix = StringTable.LOGGER_NOTICE, message = noticeString)
@@ -144,7 +160,7 @@ def logNotice(noticeString):
 
 # Procedure for loading settings from the INI file
 def loadSettings(whichFax = "", settingsFile = Settings.SETTINGS_FILE):
-	config = configparser.ConfigParser()
+	config = configparser.ConfigParser(interpolation = None)
 
 	if config.read(settingsFile) == []:
 		try:
@@ -156,13 +172,16 @@ def loadSettings(whichFax = "", settingsFile = Settings.SETTINGS_FILE):
 			pass
 
 	# Load main settings if possible (or defaults, if not)
+
+	# Header strings
 	Settings.NO_DATA = config.get("strings", "no_data", fallback = Settings.NO_DATA).replace('"', '')
 	Settings.SENDER = config.get("strings", "sender", fallback = Settings.SENDER).replace('"', '')
 	Settings.SUBJECT = config.get("strings", "subject", fallback = Settings.SUBJECT).replace('"', '')
 	Settings.DATE = config.get("strings", "date", fallback = Settings.DATE).replace('"', '')
+
+	# Message settings
 	Settings.MESSAGE_TRIGGER = config.get("message", "message_trigger", fallback = Settings.MESSAGE_TRIGGER).replace('"', '')
 	Settings.STANDARD_TRIGGER = config.get("message", "standard_trigger", fallback = Settings.STANDARD_TRIGGER).replace('"', '')
-	Settings.DEFAULT_SETTINGS = config.get("default", "default_settings", fallback = Settings.DEFAULT_SETTINGS).replace('"', '')
 	Settings.DELETE_SUBJECT_TRIGGER = config.getboolean("message", "delete_subject_trigger", fallback = Settings.DELETE_SUBJECT_TRIGGER)
 	Settings.DELETE_MESSAGE_TRIGGER = config.getboolean("message", "delete_message_trigger", fallback = Settings.DELETE_MESSAGE_TRIGGER)
 	Settings.DELETE_STANDARD_TRIGGER = config.getboolean("message", "delete_standard_trigger", fallback = Settings.DELETE_STANDARD_TRIGGER)
@@ -170,14 +189,29 @@ def loadSettings(whichFax = "", settingsFile = Settings.SETTINGS_FILE):
 	Settings.USE_PLAIN = config.getboolean("message", "use_plain", fallback = Settings.USE_PLAIN)
 	Settings.MSPACES_TONL = config.getboolean("message", "multispaces_to_new_lines", fallback = Settings.MSPACES_TONL)
 	Settings.AMPS_CHANGE = config.getboolean("message", "convert_amp_characters", fallback = Settings.AMPS_CHANGE)
-	Settings.USE_DEFAULT_SETTINGS_ON_WRONG_PARAM = config.getboolean("default", "use_default_on_wrong_parameter", fallback = Settings.USE_DEFAULT_SETTINGS_ON_WRONG_PARAM)
 	Settings.STRIP_BE_NLS = config.getboolean("message", "strip_new_lines_on_startend", fallback = Settings.STRIP_BE_NLS)
 	Settings.STRIP_INTEXT_NLS = config.getboolean("message", "strip_intext_new_lines", fallback = Settings.STRIP_INTEXT_NLS)
+
+	# Logger settings
 	Settings.DEFAULT_LOGGER_ADDRESS = config.get("logger", "address", fallback = Settings.DEFAULT_LOGGER_ADDRESS).replace('"', '')
+
+	# Rendering settings
+	Settings.TEXT_FONT_NAME = config.get("rendering", "text_font_name", fallback = Settings.TEXT_FONT_NAME).replace('"', '')
+	Settings.TEXT_FONT_SIZE = config.getint("rendering", "text_font_size", fallback = Settings.TEXT_FONT_SIZE)
+	Settings.TEXT_TOP_MARGIN = config.getint("rendering", "text_top_margin", fallback = Settings.TEXT_TOP_MARGIN)
+
+	# Default settings
+	Settings.DEFAULT_SETTINGS = config.get("default", "default_settings", fallback = Settings.DEFAULT_SETTINGS).replace('"', '')
+	Settings.USE_DEFAULT_SETTINGS_ON_WRONG_PARAM = config.getboolean("default", "use_default_on_wrong_parameter", fallback = Settings.USE_DEFAULT_SETTINGS_ON_WRONG_PARAM)
+	Settings.LOG_MESSAGE_TO_FILE = config.getboolean("default", "log_message_to_file", fallback = Settings.LOG_MESSAGE_TO_FILE)
+	Settings.MESSAGE_LOG_FILE = config.get("default", "message_log_file", fallback = Settings.MESSAGE_LOG_FILE).replace('"', '')
+	Settings.DATE_TIMEZONE = config.get("default", "date_timezone", fallback = Settings.DATE_TIMEZONE).replace('"', '')
+	Settings.DATE_FORMAT = config.get("default", "date_format", fallback = Settings.DATE_FORMAT).replace('"', '')
 
 	# Prepare global logger after loading user settings (and logger address too)
 	prepareGlobalLogger()
 
+	# Chosen fax section
 	# Check if settings section for chosen fax exists (or set it to default)
 	if (whichFax == "") or (not config.has_section(whichFax)):
 		if whichFax == "":
@@ -191,9 +225,47 @@ def loadSettings(whichFax = "", settingsFile = Settings.SETTINGS_FILE):
 		else:
 			logNotice(StringTable.NOT_USING_DEFAULT)
 
-	# Get phone number and the subject trigger for chosen fax
+	# Get phone number and subject trigger for chosen fax
 	Settings.PHONE_NUMBER = config.get(whichFax, "phone_number", fallback = Settings.PHONE_NUMBER).replace('"', '')
 	Settings.SUBJECT_TRIGGER = config.get(whichFax, "subject_trigger", fallback = Settings.SUBJECT_TRIGGER).replace('"', '')
+
+	# Get timezone for chosen fax
+	if config.has_option(whichFax, "date_timezone"):
+		Settings.DATE_TIMEZONE = config.get(whichFax, "date_timezone", fallback = Settings.DATE_TIMEZONE).replace('"', '')
+		logNotice(StringTable.USING_TIMEZONE + Settings.DATE_TIMEZONE)
+
+	# Get date format for chosen fax
+	if config.has_option(whichFax, "date_format"):
+		Settings.DATE_FORMAT = config.get(whichFax, "date_format", fallback = Settings.DATE_FORMAT).replace('"', '')
+		logNotice(StringTable.USING_DATE_FORMAT + Settings.DATE_FORMAT)
+
+	# Get setting for turning on/off logging a message to the file for chosen fax
+	if config.has_option(whichFax, "log_message_to_file"):
+		Settings.LOG_MESSAGE_TO_FILE = config.getboolean(whichFax, "log_message_to_file", fallback = Settings.LOG_MESSAGE_TO_FILE)
+		logNotice("Logging message to a file setting overriden for " + whichFax + ": " + str(Settings.LOG_MESSAGE_TO_FILE))
+
+	# Get file name for logging a message to for chosen fax
+	if config.has_option(whichFax, "message_log_file"):
+		Settings.MESSAGE_LOG_FILE = config.get(whichFax, "message_log_file", fallback = Settings.MESSAGE_LOG_FILE).replace('"', '')
+		logNotice("Message log file setting overriden for " + whichFax + ": " + Settings.MESSAGE_LOG_FILE)
+
+	# Replace loaded phone number if route is set
+	if config.has_option(whichFax, "route_to"):
+		Settings.ROUTE_TO_FAX = config.get(whichFax, "route_to", fallback = Settings.ROUTE_TO_FAX).replace('"', '')
+		if Settings.ROUTE_TO_FAX == whichFax:
+			logWarning(StringTable.ROUTE_SAME_1 + Settings.ROUTE_TO_FAX + StringTable.ROUTE_SAME_2)
+
+		elif config.has_section(Settings.ROUTE_TO_FAX):
+			try:
+				Settings.PHONE_NUMBER = config.get(Settings.ROUTE_TO_FAX, "phone_number")
+				logNotice(StringTable.USING_ROUTE + whichFax + StringTable.ROUTE_FROM_TO + Settings.ROUTE_TO_FAX)
+				if config.has_option(Settings.ROUTE_TO_FAX, "route_to"):
+					logWarning(StringTable.ROUTE_TO_NO_FOLLOW_1 + Settings.ROUTE_TO_FAX + StringTable.ROUTE_TO_NO_FOLLOW_2 + Settings.PHONE_NUMBER)
+			except:
+				logNotice(StringTable.ROUTE_NO_SETTINGS_1 + Settings.ROUTE_TO_FAX + StringTable.ROUTE_NO_SETTINGS_2 + whichFax + StringTable.ROUTE_NO_SETTINGS_3)
+
+		else:
+			logNotice(StringTable.ROUTE_NO_SETTINGS_1 + Settings.ROUTE_TO_FAX + StringTable.ROUTE_NO_SETTINGS_2 + whichFax + StringTable.ROUTE_NO_SETTINGS_3)
 
 	Settings.SETTINGS_RELOADED = True
 
@@ -249,10 +321,10 @@ def decodeHeader(input):
 	return output
 
 # Simple and good utility to make date/time more readable and to deal
-# with timezones if possible (relatively to the local machine's timezone)
-def mailDateToFormat(inp, format = "%Y-%m-%d %H:%M:%S"):
+# with timezones if possible (by default, relatively to the local machine's timezone)
+def mailDateToFormat(inp, timezone = "", format = "%Y-%m-%d %H:%M:%S"):
 	try:
-		return dateutil.parser.parse(inp).astimezone().strftime(format)
+		return dateutil.parser.parse(inp).astimezone(dateutil.tz.gettz(timezone)).strftime(format)
 	except:
 		return inp
 
@@ -276,7 +348,7 @@ def getMailInfo(message):
 		if Settings.DELETE_SUBJECT_TRIGGER:
 			s_subj = s_subj[len(Settings.SUBJECT_TRIGGER):]
 
-	s_date = mailDateToFormat(tryDecodeHeader(message["Date"]))
+	s_date = mailDateToFormat(tryDecodeHeader(message["Date"]), Settings.DATE_TIMEZONE, Settings.DATE_FORMAT)
 	if s_date == None:
 		s_date = Settings.NO_DATA
 
@@ -371,7 +443,7 @@ def saveMessagePart(binary, outFile, data, counter, s_subj, s_from):
 
 # Procedure for converting text to G3 TIFF image
 def convertTextToTIFF(fileName, fileNameWithoutExt):
-	papsCommand = ["paps", "--top-margin=6", "--font=Monospace 10", fileName]
+	papsCommand = ["paps", "--top-margin=" + str(Settings.TEXT_TOP_MARGIN), "--font=" + Settings.TEXT_FONT_NAME + " " + str(Settings.TEXT_FONT_SIZE), fileName]
 	ghscCommand = ["gs", "-sDEVICE=tiffg3", "-sOutputFile=" + fileNameWithoutExt + ".tiff", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-dQUIET", "-"]
 
 	paps = subprocess.Popen(papsCommand, stdout = subprocess.PIPE)
@@ -404,6 +476,19 @@ def convertImageToTIFF(fileName, fileNameWithoutExt, pageWidth = 1728, marginLef
 
 	# Convert images to TIFFs with auto-size and auto-margin
 	subprocess.check_output(command)
+
+	return
+
+# Procedure for logging message contents to file
+def logMessageToFile(filename, data):
+	try:
+		gLogFile = gzip.open(filename, "at")
+		gLogFile.write(data)
+		gLogFile.write("\n")
+		gLogFile.close()
+
+	except Exception as e:
+		logError(StringTable.LOGGING_MESSAGE_FAILED)
 
 	return
 
@@ -451,6 +536,10 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 		else:
 			# Read the message from provided data
 			buffer = passBuffer
+
+		# Log message to the GZIP file
+		if Settings.LOG_MESSAGE_TO_FILE:
+			logMessageToFile(Settings.MESSAGE_LOG_FILE, buffer)
 
 		# Import message and get main information from headers
 		message = email.message_from_string(buffer)
@@ -706,8 +795,12 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 
 	return everythingOK
 
+
 # Autorun part
 if __name__ == "__main__":
+	# Set default exit code (0)
+	exitCode = 0
+
 	# Try to get and process incomming message
 	try:
 		if len(sys.argv) > 1:
@@ -718,15 +811,14 @@ if __name__ == "__main__":
 		loadSettings(whichFax = whichFax)
 
 		if getAndProcess():
-			exit(0)
+			exitCode = 0
 		else:
-			exit(1)
+			exitCode = 1
 
 	# I think it's much better this way
 	except Exception as e:
 		logError(str(e))
-		exit(1)
+		exitCode = 1
 
-	# And finally return 0 exit code
-	finally:
-		exit(0)
+	# And finally return exit code to the system
+	os._exit(exitCode)
