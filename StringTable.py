@@ -2,12 +2,13 @@
 
 # String table for E-Mail to Fax Relay Utility for Procmail and MGetty-Fax (faxspool)
 #
-# by Magnetic-Fox, 16.10.2025
+# by Magnetic-Fox, 16-24.10.2025
 #
 # (C)2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
 LOGGER_RELAY_NAME = "FAX-Relay"
 LOGGER_ERROR = LOGGER_RELAY_NAME + ": error: "
+LOGGER_WARNING = LOGGER_RELAY_NAME + ": warning: "
 LOGGER_NOTICE = LOGGER_RELAY_NAME + ": notice: "
 SAVE_IMAGE_1 = 'Going to save image part of the message "'
 SAVE_IMAGE_2 = '" from "'
@@ -45,3 +46,15 @@ TEXT_DISCARDED_3 = '" discarded due to the message trigger'
 STANDARD_RESOLUTION_1 = 'Standard resolution triggered for message "'
 STANDARD_RESOLUTION_2 = SAVE_IMAGE_2
 STANDARD_RESOLUTION_3 = ATTACHMENT_DISCARDED_3
+ROUTE_SAME_1 = "Route "
+ROUTE_SAME_2 = " points to the same settings, ignoring"
+USING_ROUTE = "Using route "
+ROUTE_FROM_TO = " -> "
+ROUTE_TO_NO_FOLLOW_1 = "Settings for "
+ROUTE_TO_NO_FOLLOW_2 = " has defined route_to option, which won't be followed. Will use phone number: "
+ROUTE_NO_SETTINGS_1 = "Route set, but no settings for "
+ROUTE_NO_SETTINGS_2 = ", using previous settings ("
+ROUTE_NO_SETTINGS_3 = ")"
+USING_TIMEZONE = "Using timezone: "
+USING_DATE_FORMAT = "Using date format: "
+LOGGING_MESSAGE_FAILED = "Logging message to file failed!"
