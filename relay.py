@@ -69,6 +69,7 @@ class Settings:
 	DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 	LOG_MESSAGE_TO_FILE = True
 	MESSAGE_LOG_FILE = "/var/log/Mail2Fax/mails.gz"
+	UNPACK_MULTI_TIFF = True
 
 # Great HTML to text part found on Stack Overflow
 class HTMLFilter(html.parser.HTMLParser):
@@ -207,6 +208,7 @@ def loadSettings(whichFax = "", settingsFile = Settings.SETTINGS_FILE):
 	Settings.MESSAGE_LOG_FILE = config.get("default", "message_log_file", fallback = Settings.MESSAGE_LOG_FILE).replace('"', '')
 	Settings.DATE_TIMEZONE = config.get("default", "date_timezone", fallback = Settings.DATE_TIMEZONE).replace('"', '')
 	Settings.DATE_FORMAT = config.get("default", "date_format", fallback = Settings.DATE_FORMAT).replace('"', '')
+	Settings.UNPACK_MULTI_TIFF = config.getboolean("default", "unpack_multipage_tiffs", fallback = Settings.UNPACK_MULTI_TIFF)
 
 	# Prepare global logger after loading user settings (and logger address too)
 	prepareGlobalLogger()
@@ -492,6 +494,44 @@ def logMessageToFile(filename, data):
 
 	return
 
+# Function for gathering image count in one file
+def getImageCount(filename):
+	img = PIL.Image.open(filename)
+	imgCount = img.n_frames
+	img.close()
+
+	return imgCount
+
+# Function for unpacking multipage TIFF files and place in the main temporary directory
+def unpackTIFFandPrepare(counter, filename):
+	newFileList = []
+
+	try:
+		# Prepare another temporary directory and change directory to it
+		oldDir = os.getcwd()
+		dir = tempfile.TemporaryDirectory()
+		os.chdir(dir.name)
+
+		# Split TIFF image
+		subprocess.run(["tiffsplit", oldDir + "/" + filename])
+
+		# Get and sort single TIFF files
+		fileList = os.listdir(".")
+		fileList.sort()
+
+		# Rename files according to the counter and move to the main temporary directory
+		for file in fileList:
+			os.rename(file, oldDir + "/" + str(counter) + ".tiff")
+			newFileList += [str(counter) + ".tiff"]
+			counter += 1
+
+	finally:
+		# Change back directory and clean up temporary directory
+		os.chdir(oldDir)
+		dir.cleanup()
+
+	# Return list of additional files
+	return newFileList
 
 # Main program procedure for gathering mail data and process it
 def getAndProcess(passBuffer = None, whichFax = ""):
@@ -708,6 +748,14 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 
 					# Save it too
 					outFile = saveMessagePart(True, outFile, data, counter, s_subj, s_from)
+
+					# It's not a typo - extension here can be now TIF (not TIFF!)
+					if (Settings.UNPACK_MULTI_TIFF) and (fExt.lower() == ".tif"):
+						imageCount = getImageCount(outFile)
+						if imageCount > 1:
+							fileList += unpackTIFFandPrepare(counter, outFile)
+							counter += imageCount - 1
+							outFile = ""
 
 				except:
 					outFile = ""
