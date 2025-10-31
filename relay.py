@@ -8,7 +8,7 @@
 # Software intended for use on Linux systems (especially Debian)
 # because of calling conventions and specific system utilities used
 #
-# by Magnetic-Fox, 13.07.2024 - 24.10.2025
+# by Magnetic-Fox, 13.07.2024 - 31.10.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -453,7 +453,7 @@ def convertTextToTIFF(fileName, fileNameWithoutExt):
 	return
 
 # Procedure for converting images to TIFF files (to be extended someday - I have some ideas...)
-def convertImageToTIFF(fileName, fileNameWithoutExt, pageWidth = 1728, marginLeft = 32, marginRight = 32, sizingCharacter = ">"):
+def convertImageToTIFF(fileName, fileNameWithoutExt, pageWidth = 1728, marginLeft = 32, marginRight = 32):
 	rotate = False
 
 	# Test if image has to be rotated
@@ -469,7 +469,7 @@ def convertImageToTIFF(fileName, fileNameWithoutExt, pageWidth = 1728, marginLef
 		command += ["-rotate", "90"]
 
 	# Below should give such result for resize: 1664>
-	command += ["-resize", str(pageWidth - marginLeft - marginRight) + sizingCharacter]
+	command += ["-resize", str(pageWidth - marginLeft - marginRight) + "x"]
 	command += ["-background", "white", "-gravity", "northwest", "-splice", str(marginLeft) + "x0"]
 	command += ["-background", "white", "-gravity", "northeast", "-splice", str(marginRight) + "x0"]
 	command += [fileNameWithoutExt + ".tiff"]
@@ -701,6 +701,11 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 					outFile = str(counter) + ".jpg"
 
 				try:
+					# Very simple workaround for TIFF attachments (to leave space for converting files to .tiff without overwriting)
+					if fExt.lower() == ".tiff":
+						fExt = ".tif"
+						outFile = str(counter) + fExt
+
 					# Save it too
 					outFile = saveMessagePart(True, outFile, data, counter, s_subj, s_from)
 
