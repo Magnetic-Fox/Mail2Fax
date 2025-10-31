@@ -234,4 +234,4 @@ Please do not use these solutions commercially (as they are not so good tested t
 However, if You still like to anyway, please ask me before.
 
 Bartłomiej "Magnetic-Fox" Węgrzyn,
-24th July 2024 - 27th August 2025.
+July 24, 2024 - October 31, 2025
