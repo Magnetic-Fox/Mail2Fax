@@ -214,7 +214,7 @@ This partial solution was found somewhere on the SourceForge (if I remember corr
 Unfortunately, it's best to use just polling the mail inbox periodically than using IMAP IDLE.
 To do so, just remove `idle` keyword from the configuration file.
 
-### Fetchmail can't get my email!
+### Fetchmail can't get my mail!
 
 If Your Fetchmail configuration isn't wrong, then You probably can't connect with Your e-mail provider.
 As e-mail providers are switching more and more to OAuth2 lately, which Fetchmail (obviously) can't use directly, You have to use some kind of a proxy to reach them.
