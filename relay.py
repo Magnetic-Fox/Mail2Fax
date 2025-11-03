@@ -2,13 +2,13 @@
 
 # E-Mail to Fax Relay Utility for Procmail and MGetty-Fax (faxspool)
 #
-# Utilizing PAPS, GhostScript, ImageMagick (convert), Pillow (PIL)
-# and system logger (logger; now via Python modules)
+# Using PAPS, GhostScript, ImageMagick (convert), Pillow (PIL),
+# file command and system logger (logger; now via Python modules)
 #
 # Software intended for use on Linux systems (especially Debian)
 # because of calling conventions and specific system utilities used
 #
-# by Magnetic-Fox, 13.07.2024 - 31.10.2025
+# by Magnetic-Fox, 13.07.2024 - 03.11.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -23,6 +23,7 @@ import datetime
 import configparser
 import io
 import gzip
+import mimetypes
 import logging
 import logging.handlers
 import email
@@ -77,6 +78,24 @@ class HTMLFilter(html.parser.HTMLParser):
 
 	def handle_data(self, data):
 		self.text += data
+
+# Function for determining attachment's mime type (using file command)
+def determineMimeType(data):
+	fileCommand = ["file", "-b", "--mime-type", "-"]
+	fileProcess = subprocess.Popen(fileCommand, stdin = subprocess.PIPE, stdout = subprocess.PIPE)
+
+	if isinstance(data, str):
+		data = data.encode()
+
+	return fileProcess.communicate(data)[0].decode().rstrip()
+
+# Simple main type extractor from mime type got from file command
+def getMainType(mimeType):
+	return mimeType.split("/")[0]
+
+# Simple sub type extractor from mime type got from file command
+def getSubType(mimeType):
+	return "".join(mimeType.split("/")[1:])
 
 # Simple new line characters counter
 def countNewLines(data, position):
@@ -513,7 +532,8 @@ def unpackTIFFandPrepare(counter, filename):
 		os.chdir(dir.name)
 
 		# Split TIFF image
-		subprocess.run(["tiffsplit", oldDir + "/" + filename])
+		tiffSplitCommand = ["tiffsplit", oldDir + "/" + filename]
+		subprocess.run(tiffSplitCommand)
 
 		# Get and sort single TIFF files
 		fileList = os.listdir(".")
@@ -631,9 +651,21 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 			if len(data) == 0:
 				continue
 
-			# Let's store main type in temporary variable to make further code look better
-			contentMainType = part.get_content_maintype()
+			# Determine and store attachment's type information in temporary variables to make further code look better
+			contentMimeType = determineMimeType(data)
+			contentMainType = getMainType(contentMimeType)
+			contentSubType = getSubType(contentMimeType)
+			contentExtension = mimetypes.guess_extension(contentMimeType)
 
+			# Change extension to this from mail if guessing failed
+			if contentExtension == "":
+				contentExtension = fExt
+
+			# Log mime type override
+			if contentMimeType != part.get_content_type():
+				logNotice(StringTable.MIMETYPE_OVERRIDE_1 + s_subj + StringTable.MIMETYPE_OVERRIDE_2 + s_from + StringTable.MIMETYPE_OVERRIDE_3 + contentMimeType + StringTable.MIMETYPE_OVERRIDE_4 + part.get_content_type() + StringTable.MIMETYPE_OVERRIDE_5)
+
+			# Additional (old) tests
 			# Let's check if text/plain isn't in fact an image...
 			if (contentMainType == "text") and isinstance(data, bytes) and quickImageTest(data):
 				contentMainType = "image"
@@ -645,13 +677,13 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 				logNotice(StringTable.SAVE_IMAGE_1 + s_subj + StringTable.SAVE_IMAGE_2 + s_from + StringTable.SAVE_IMAGE_3)
 
 			if contentMainType == "text":
-				# Get rid of "bytes" type if possible
+				# Get rid of "bytes" type if needed
 				try:
 					data = str(data, encoding)
 				except:
 					data = str(data)
 
-				if part.get_content_subtype() == "html":
+				if contentSubType == "html":
 					# Replace any <br> and <br /> to the new lines, because this simple HTMLFilter can't do this automatically
 					data = data.replace("<br>", "\n").replace("<br />", "\n")
 					converter = HTMLFilter()
@@ -719,38 +751,39 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 				wasTextInMessage = True
 
 			elif contentMainType == "image":
-				if(fExt != ""):
+				if(contentExtension != ""):
 					# Additional test if attachment has correct extension (for too quick locally sent messages with image attachments)
-					if fExt.lower() == ".txt":
+					if contentExtension.lower() == ".txt":
 						if quickImageFormat(data) == "":
 							# Let's say JPG is a default extension if it is unknown
-							fExt = ".jpg"
+							contentExtension = ".jpg"
 						else:
-							fExt = "." + quickImageFormat(data)
+							contentExtension = "." + quickImageFormat(data)
 
-					outFile = str(counter) + fExt
+					outFile = str(counter) + contentExtension
 
 				elif(quickImageFormat(data) != ""):
 					# Try to guess image format
-					fExt = "." + quickImageFormat(data)
+					contentExtension = "." + quickImageFormat(data)
 					# Update filename (again, big thanks to MarX, who accidentally found that part missing!)
-					outFile = str(counter) + fExt
+					outFile = str(counter) + contentExtension
 
 				else:
 					# Try default image extension (using simply .jpg should be harmless)
-					outFile = str(counter) + ".jpg"
+					contentExtension = ".jpg"
+					outFile = str(counter) + contentExtension
 
 				try:
 					# Very simple workaround for TIFF attachments (to leave space for converting files to .tiff without overwriting)
-					if fExt.lower() == ".tiff":
-						fExt = ".tif"
-						outFile = str(counter) + fExt
+					if contentExtension.lower() == ".tiff":
+						contentExtension = ".tif"
+						outFile = str(counter) + contentExtension
 
 					# Save it too
 					outFile = saveMessagePart(True, outFile, data, counter, s_subj, s_from)
 
-					# It's not a typo - extension here can be now TIF (not TIFF!)
-					if (Settings.UNPACK_MULTI_TIFF) and (fExt.lower() == ".tif"):
+					# It's not a typo - extension here will be TIF (not TIFF!)
+					if (Settings.UNPACK_MULTI_TIFF) and (contentExtension.lower() == ".tif"):
 						imageCount = getImageCount(outFile)
 						if imageCount > 1:
 							fileList += unpackTIFFandPrepare(counter, outFile)
@@ -764,7 +797,7 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 			else:
 				# If part of a message is not a text nor an image, then discard it (as it may be vulnerable)
 				outFile = ""
-				logNotice(StringTable.ATTACHMENT_DISCARDED_1 + s_subj + StringTable.ATTACHMENT_DISCARDED_2 + s_from + StringTable.ATTACHMENT_DISCARDED_3)
+				logNotice(StringTable.ATTACHMENT_DISCARDED_1 + s_subj + StringTable.ATTACHMENT_DISCARDED_2 + s_from + StringTable.ATTACHMENT_DISCARDED_3 + " (" + contentMimeType + ")")
 
 			# Increase the file counter and add file to the list (if there is any)
 			counter += 1
@@ -787,28 +820,29 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 				logNotice(StringTable.HEADER_SAVE_ERROR_1 + s_subj + StringTable.HEADER_SAVE_ERROR_2 + s_from + StringTable.HEADER_SAVE_ERROR_3)
 
 		# Now convert all the saved files (text and images) to the TIFFs
-		for x in range(len(fileList)):
-			fN, fExt = os.path.splitext(fileList[x])
+		for fileNumber in range(len(fileList)):
+			# Unpack file name and extension
+			fN, fExt = os.path.splitext(fileList[fileNumber])
 
 			# Text files
 			if fExt == ".txt":
 				# Convert text files to G3 TIFFs
-				convertTextToTIFF(fileList[x], fN)
+				convertTextToTIFF(fileList[fileNumber], fN)
 
 				# Update the file name on the list
-				fileList[x] = fN + ".tiff"
+				fileList[fileNumber] = fN + ".tiff"
 
 				# And apply the cutter (to prevent wasting paper on a fax machine)
-				cutter.loadAndCrop(fileList[x])
+				cutter.loadAndCrop(fileList[fileNumber])
 
 			# Image files
 			else:
 				try:
 					# Try to convert an image (if possible)
-					convertImageToTIFF(fileList[x], fN)
+					convertImageToTIFF(fileList[fileNumber], fN)
 
 					# Update the file name on the list
-					fileList[x] = fN + ".tiff"
+					fileList[fileNumber] = fN + ".tiff"
 
 				except:
 					# Probably corrupted image
