@@ -661,9 +661,17 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 			if contentExtension == "":
 				contentExtension = fExt
 
-			# Log mime type override
+			# If guessed mime type doesn't match with what is in the mail
 			if contentMimeType != part.get_content_type():
-				logNotice(StringTable.MIMETYPE_OVERRIDE_1 + s_subj + StringTable.MIMETYPE_OVERRIDE_2 + s_from + StringTable.MIMETYPE_OVERRIDE_3 + contentMimeType + StringTable.MIMETYPE_OVERRIDE_4 + part.get_content_type() + StringTable.MIMETYPE_OVERRIDE_5)
+				# Additional condition, as otherwise html to text may not happen
+				if contentMimeType == "text/plain" and part.get_content_type() == "text/html":
+					contentMimeType = part.get_content_type()
+					contentMainType = part.get_content_maintype()
+					contentSubType = part.get_content_subtype()
+					# File extension doesn't matter
+				else:
+					# Otherwise, log mime type override
+					logNotice(StringTable.MIMETYPE_OVERRIDE_1 + s_subj + StringTable.MIMETYPE_OVERRIDE_2 + s_from + StringTable.MIMETYPE_OVERRIDE_3 + contentMimeType + StringTable.MIMETYPE_OVERRIDE_4 + part.get_content_type() + StringTable.MIMETYPE_OVERRIDE_5)
 
 			# Additional (old) tests
 			# Let's check if text/plain isn't in fact an image...
