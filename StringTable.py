@@ -2,7 +2,7 @@
 
 # String table for E-Mail to Fax Relay Utility for Procmail and MGetty-Fax (faxspool)
 #
-# by Magnetic-Fox, 16-24.10.2025
+# by Magnetic-Fox, 16.10.2025 - 03.11.2025
 #
 # (C)2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -16,6 +16,11 @@ SAVE_IMAGE_3 = '" as a text file (probably wrong content type in the message)'
 SAVE_TEXT_1 = 'Going to save text part of the message "'
 SAVE_TEXT_2 = SAVE_IMAGE_2
 SAVE_TEXT_3 = '" as an image file (probably wrong content type in the message)'
+MIMETYPE_OVERRIDE_1 = 'Overriding mime type for attachment in message "'
+MIMETYPE_OVERRIDE_2 = '" from "'
+MIMETYPE_OVERRIDE_3 = '" to: '
+MIMETYPE_OVERRIDE_4 = " (previous: "
+MIMETYPE_OVERRIDE_5 = ")"
 NO_PHONE_NUMBER = "No phone number specified!"
 SAVE_TEXT_ERROR_1 = 'Saving text from message "'
 SAVE_TEXT_ERROR_2 = SAVE_IMAGE_2
