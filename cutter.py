@@ -2,12 +2,11 @@
 
 # Simple bottom cutter for G3 TIFFs utilizing PIL and ImageMagick
 #
-# by Magnetic-Fox, 02.08.2024 - 31.10.2025
+# by Magnetic-Fox, 02.08.2024 - 17.11.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
 
-import os
 import sys
 import subprocess
 import PIL.Image
@@ -65,13 +64,18 @@ def loadAndCrop(filename, leave = DEFAULT_LEAVE):
 
 # Autorun part (for standalone use)
 if __name__ == "__main__":
+	exitCode = 0
+
 	try:
 		if len(sys.argv) == 2:
-			os._exit(loadAndCrop(sys.argv[1]))
+			exitCode = loadAndCrop(sys.argv[1])
 		elif len(sys.argv) == 3:
-			os._exit(loadAndCrop(sys.argv[1], int(sys.argv[2])))
+			exitCode = loadAndCrop(sys.argv[1], int(sys.argv[2]))
 		else:
 			print("Usage: cutter.py <filename> [bottomMarginSize]")
-			os._exit(1)
+			exitCode = 1
 	except:
-		os._exit(2)
+		exitCode = 2
+
+	# Return exit code
+	exit(exitCode)
