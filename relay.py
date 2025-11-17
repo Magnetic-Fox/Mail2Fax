@@ -8,7 +8,7 @@
 # Software intended for use on Linux systems (especially Debian)
 # because of calling conventions and specific system utilities used
 #
-# by Magnetic-Fox, 13.07.2024 - 03.11.2025
+# by Magnetic-Fox, 13.07.2024 - 17.11.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -33,6 +33,7 @@ import html.parser
 import PIL.Image
 import StringTable
 import cutter
+import tiffTools
 
 
 # Global variable for logger (to be replaced by logging class someday...)
@@ -462,41 +463,33 @@ def saveMessagePart(binary, outFile, data, counter, s_subj, s_from):
 
 	return outFile
 
-# Procedure for converting text to G3 TIFF image
+# Wrapper for converting text to G3 TIFF image
 def convertTextToTIFF(fileName, fileNameWithoutExt):
-	papsCommand = ["paps", "--top-margin=" + str(Settings.TEXT_TOP_MARGIN), "--font=" + Settings.TEXT_FONT_NAME + " " + str(Settings.TEXT_FONT_SIZE), fileName]
-	ghscCommand = ["gs", "-sDEVICE=tiffg3", "-sOutputFile=" + fileNameWithoutExt + ".tiff", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-dQUIET", "-"]
-
-	paps = subprocess.Popen(papsCommand, stdout = subprocess.PIPE)
-	subprocess.check_output(ghscCommand, stdin = paps.stdout)
-	paps.wait()
-
+	tiffTools.textFileToTIFF(fileNameWithoutExt + ".tiff", fileName, Settings.TEXT_FONT_NAME + " " + str(Settings.TEXT_FONT_SIZE), Settings.TEXT_TOP_MARGIN)
 	return
 
-# Procedure for converting images to TIFF files (to be extended someday - I have some ideas...)
+# Procedure for converting images to non-G3 TIFF files
 def convertImageToTIFF(fileName, fileNameWithoutExt, pageWidth = 1728, marginLeft = 32, marginRight = 32):
-	rotate = False
-
 	# Test if image has to be rotated
 	img = PIL.Image.open(fileName)
 	width, height = img.size
 	img.close()
-	rotate = width > height
 
 	# Prepare command
 	command = ["convert", fileName]
 
-	if rotate:
+	# Rotate if needed
+	if width > height:
 		command += ["-rotate", "90"]
 
-	# Below should give such result for resize: 1664>
+	# Below should give such result for resize: 1664x
 	command += ["-resize", str(pageWidth - marginLeft - marginRight) + "x"]
 	command += ["-background", "white", "-gravity", "northwest", "-splice", str(marginLeft) + "x0"]
 	command += ["-background", "white", "-gravity", "northeast", "-splice", str(marginRight) + "x0"]
 	command += [fileNameWithoutExt + ".tiff"]
 
 	# Convert images to TIFFs with auto-size and auto-margin
-	subprocess.check_output(command)
+	subprocess.run(command)
 
 	return
 
