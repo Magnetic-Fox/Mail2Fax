@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# TIFF tools utilizing paps, gs, convert and tiffset
+# TIFF tools utilizing paps, gs, convert, tiffset and Pillow (PIL)
 #
 # by Magnetic-Fox, 19.04.2025 - 17.11.2025
 #
@@ -8,7 +8,33 @@
 
 
 import subprocess
+import PIL.Image
 
+
+# Image to non-G3 TIFF file converter
+def imageToTIFF(imageFileName, tiffFileName, pageWidth = 1728, marginLeft = 32, marginRight = 32):
+	# Get image size to test if image has to be rotated
+	img = PIL.Image.open(imageFileName)
+	width, height = img.size
+	img.close()
+
+	# Prepare command
+	command = ["convert", imageFileName]
+
+	# Set to rotate if needed
+	if width > height:
+		command += ["-rotate", "90"]
+
+	# Below should give such result for resize: 1664x
+	command += ["-resize", str(pageWidth - marginLeft - marginRight) + "x"]
+	command += ["-background", "white", "-gravity", "northwest", "-splice", str(marginLeft) + "x0"]
+	command += ["-background", "white", "-gravity", "northeast", "-splice", str(marginRight) + "x0"]
+	command += [tiffFileName]
+
+	# Convert images to TIFFs with auto-size and auto-margin
+	subprocess.run(command)
+
+	return
 
 # Text to TIFF renderer
 def textToTIFF(tiffFileName, textData, fontName = "Monospace 10", topMargin = 6):
