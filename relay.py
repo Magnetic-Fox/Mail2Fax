@@ -41,7 +41,7 @@ preparedLogger = None
 
 # Static settings class (with default settings applied)
 class Settings:
-	SETTINGS_FILE = "relay_settings.ini"
+	SETTINGS_FILE = "settings.ini"
 	SETTINGS_RELOADED = False
 	NO_DATA = "(no data)"
 	SENDER = "Sender:  "
@@ -468,29 +468,9 @@ def convertTextToTIFF(fileName, fileNameWithoutExt):
 	tiffTools.textFileToTIFF(fileNameWithoutExt + ".tiff", fileName, Settings.TEXT_FONT_NAME + " " + str(Settings.TEXT_FONT_SIZE), Settings.TEXT_TOP_MARGIN)
 	return
 
-# Procedure for converting images to non-G3 TIFF files
+# Wrapper for converting images to non-G3 TIFF files
 def convertImageToTIFF(fileName, fileNameWithoutExt, pageWidth = 1728, marginLeft = 32, marginRight = 32):
-	# Test if image has to be rotated
-	img = PIL.Image.open(fileName)
-	width, height = img.size
-	img.close()
-
-	# Prepare command
-	command = ["convert", fileName]
-
-	# Rotate if needed
-	if width > height:
-		command += ["-rotate", "90"]
-
-	# Below should give such result for resize: 1664x
-	command += ["-resize", str(pageWidth - marginLeft - marginRight) + "x"]
-	command += ["-background", "white", "-gravity", "northwest", "-splice", str(marginLeft) + "x0"]
-	command += ["-background", "white", "-gravity", "northeast", "-splice", str(marginRight) + "x0"]
-	command += [fileNameWithoutExt + ".tiff"]
-
-	# Convert images to TIFFs with auto-size and auto-margin
-	subprocess.run(command)
-
+	tiffTools.imageToTIFF(fileName, fileNameWithoutExt + ".tiff", pageWidth, marginLeft, marginRight)
 	return
 
 # Procedure for logging message contents to file
