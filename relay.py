@@ -8,7 +8,7 @@
 # Software intended for use on Linux systems (especially Debian)
 # because of calling conventions and specific system utilities used
 #
-# by Magnetic-Fox, 13.07.2024 - 17.11.2025
+# by Magnetic-Fox, 13.07.2024 - 20.11.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -658,6 +658,9 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 				logNotice(StringTable.SAVE_IMAGE_1 + s_subj + StringTable.SAVE_IMAGE_2 + s_from + StringTable.SAVE_IMAGE_3)
 
 			if contentMainType == "text":
+				# This will avoid discarding text attachments...
+				messageTriggered = False
+
 				# Get rid of "bytes" type if needed
 				try:
 					data = str(data, encoding)
@@ -682,26 +685,31 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 				# Convert any CR+LF to just LF (big thanks to MariuszK, who accidentally found that part missing!)
 				data = data.replace("\r\n", "\n")
 
-				# Add header to the text part (if possible)
+				# Things to be done/checked once (in the first text part of the message)
 				if first:
+					# Add header to the text part (if possible)
 					if len(data) == 0:
 						data = prepareTextHeader(s_from, s_subj, s_date, False)
 					else:
 						data = prepareTextHeader(s_from, s_subj, s_date) + data
 
-					first = False
+					# Are we going to use message triggers?
+					if Settings.DELETE_MESSAGE_TRIGGER:
+						# Is message triggered?
+						messageTriggered = (data.find(Settings.MESSAGE_TRIGGER) != -1)
 
-				# Are we going to use message triggers?
-				if Settings.DELETE_MESSAGE_TRIGGER:
-					# Is message triggered?
-					messageTriggered = (data.find(Settings.MESSAGE_TRIGGER) != -1)
+					# Are we going to use standard resolution trigger?
+					if Settings.USE_STANDARD_TRIGGER:
+						# Is message meant to be sent in the standard resolution?
+						standardTriggered = (data.find(Settings.STANDARD_TRIGGER) != -1)
 
-				# Are we going to use standard resolution trigger?
-				if Settings.USE_STANDARD_TRIGGER:
-					# Is message meant to be sent in the standard resolution?
-					standardTriggered = (data.find(Settings.STANDARD_TRIGGER) != -1)
+					# Is standard trigger has to be removed (only in first text part)?
 					if Settings.DELETE_STANDARD_TRIGGER:
+						# Delete it
 						data=data.replace(Settings.STANDARD_TRIGGER, "")
+
+					# "First-text-part-time" checks done; flag it
+					first = False
 
 				# Having those two conditions here below will probably make checks above a little slower
 				# (in situations with e-mails containing huge amount of new lines at the beginning or
@@ -727,6 +735,7 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 						logNotice(StringTable.SAVE_TEXT_ERROR_1 + s_subj + StringTable.SAVE_TEXT_ERROR_2 + s_from + StringTable.SAVE_TEXT_ERROR_3)
 
 				else:
+					outFile = ""
 					logNotice(StringTable.TEXT_DISCARDED_1 + s_subj + StringTable.TEXT_DISCARDED_2 + s_from + StringTable.TEXT_DISCARDED_3)
 
 				wasTextInMessage = True
