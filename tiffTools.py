@@ -2,10 +2,9 @@
 
 # TIFF tools utilizing paps, gs, convert, tiffset and Pillow (PIL)
 #
-# by Magnetic-Fox, 19.04.2025 - 17.11.2025
+# by Magnetic-Fox, 19.04.2025 - 22.11.2025
 #
 # (C)2025 Bartłomiej "Magnetic-Fox" Węgrzyn
-
 
 import subprocess
 import PIL.Image
@@ -36,11 +35,41 @@ def imageToTIFF(imageFileName, tiffFileName, pageWidth = 1728, marginLeft = 32, 
 
 	return
 
-# Text to TIFF renderer
-def textToTIFF(tiffFileName, textData, fontName = "Monospace 10", topMargin = 6):
+# Text to TIFF renderer (0 - standard resolution, 1 - fine resolution, 2 - super fine resolution)
+#
+# Default bottom margin value explanation:
+# 141 PS points of bottom margin were chosen to achieve 2000 px height for image after cutting
+# using cutter procedure (which has its default bottom margin set to 94 pixels).
+#
+# Why?
+# 196 pixels per inch is the base document vertical resolution for G3 fax produced by GhostScript.
+# 1 PostScript point is 1/72 inch, which means that 72 PostScript points gives us 196 pixels.
+# Default page height for 196 DPI is 2289 pixels, which gives us 289 too much (we want 2000).
+# Cutter utility needs additional 94 pixels to provide default bottom margin, so we need to add this too.
+# Now: 289 + 94 (default from cutter) gives us 383 pixels we want out.
+# This gives us such formula: bottomMargin = (72 * 383) / 196, which we have to ceil (to not exceed 2000 pixels!)
+#
+# Why 2000 pixels?
+# That's because mgetty-fax will automatically scale images that exceeds such height.
+# I just wanted to avoid it. ;)
+def textToTIFF(tiffFileName, textData, resolution = 1, fontNameAndSize = "Monospace 10", topMargin = 6, bottomMargin = 141):
 	# Prepare paps and gs commands
-	papsCommand = ["paps", "--font=" + fontName, "--top-margin=" + str(topMargin)]
-	ghscCommand = ["gs", "-sDEVICE=tiffg3", "-sOutputFile=" + tiffFileName, "-dBATCH", "-dNOPAUSE", "-dSAFER", "-dQUIET", "-"]
+	papsCommand = ["paps", "--font=" + fontNameAndSize, "--top-margin=" + str(topMargin), "--bottom-margin=" + str(bottomMargin)]
+	ghscCommand = ["gs", "-sDEVICE=tiffg3"]
+
+	# Standard resolution
+	if resolution == 0:
+		ghscCommand += ["-r204x98"]
+
+	# Super fine resolution
+	elif resolution == 2:
+		ghscCommand += ["-r204x391"]
+
+	# Fine resolution ("normal")
+	else:
+		ghscCommand += ["-r204x196"]
+
+	ghscCommand += ["-sOutputFile=" + tiffFileName, "-dBATCH", "-dNOPAUSE", "-dSAFER", "-dQUIET", "-"]
 
 	# Create processes
 	paps = subprocess.Popen(papsCommand, stdin = subprocess.PIPE, stdout = subprocess.PIPE)
@@ -53,9 +82,9 @@ def textToTIFF(tiffFileName, textData, fontName = "Monospace 10", topMargin = 6)
 	return
 
 # Text file to TIFF renderer (wrapper)
-def textFileToTIFF(tiffFileName, textFileName, fontName = "Monospace 10", topMargin = 6):
+def textFileToTIFF(tiffFileName, textFileName, resolution = 1, fontNameAndSize = "Monospace 10", topMargin = 6, bottomMargin = 141):
 	textFile = open(textFileName, "r")
-	textToTIFF(tiffFileName, textFile.read(), fontName, topMargin)
+	textToTIFF(tiffFileName, textFile.read(), resolution, fontNameAndSize, topMargin, bottomMargin)
 	textFile.close()
 	return
 
