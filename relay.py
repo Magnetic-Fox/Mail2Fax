@@ -8,7 +8,7 @@
 # Software intended for use on Linux systems (especially Debian)
 # because of calling conventions and specific system utilities used
 #
-# by Magnetic-Fox, 13.07.2024 - 22.11.2025
+# by Magnetic-Fox, 13.07.2024 - 23.11.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -465,7 +465,7 @@ def saveMessagePart(binary, outFile, data, counter, s_subj, s_from):
 
 # Wrapper for converting text to G3 TIFF image
 def convertTextToTIFF(fileName, fileNameWithoutExt):
-	tiffTools.textFileToTIFF(fileNameWithoutExt + ".tiff", fileName, fontNameAndSize = Settings.TEXT_FONT_NAME + " " + str(Settings.TEXT_FONT_SIZE), topMargin = Settings.TEXT_TOP_MARGIN)
+	tiffTools.textFileToTIFF(fileNameWithoutExt + ".tiff", fileName, 1, Settings.TEXT_FONT_NAME + " " + str(Settings.TEXT_FONT_SIZE), Settings.TEXT_TOP_MARGIN)
 	return
 
 # Wrapper for converting images to non-G3 TIFF files
