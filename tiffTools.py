@@ -8,6 +8,7 @@
 
 import subprocess
 import PIL.Image
+import math
 
 
 # Image to non-G3 TIFF file converter
@@ -129,3 +130,18 @@ def resizeAndApplyResolution(tiffFileName, resolution):
 	subprocess.run(tiffSetCommand)
 
 	return
+
+# Geometry recalculation function
+def recalculateGeometry(geometryData, resolution = 1):
+	geometryData = geometryData.split("+")[1:]
+
+	geometryData[0] = int(geometryData[0])
+	geometryData[1] = int(geometryData[1])
+
+	if resolution == 0:
+		geometryData[1] = math.ceil(geometryData[1] / 2)
+
+	elif resolution == 2:
+		geometryData[1] *= 2
+
+	return "+" + str(geometryData[0]) + "+" + str(geometryData[1])
