@@ -2,12 +2,12 @@
 
 # Simple bottom cutter for G3 TIFFs utilizing PIL and ImageMagick
 #
-# by Magnetic-Fox, 02.08.2024 - 17.11.2025
+# by Magnetic-Fox, 02.08.2024 - 22.11.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
-
 import sys
+import math
 import subprocess
 import PIL.Image
 
@@ -61,6 +61,20 @@ def loadAndCrop(filename, leave = DEFAULT_LEAVE):
 		return subprocess.run(convertCommand).returncode
 
 	return 0
+
+# Simple bottom cut calculating function (0 - standard resolution, 1 - fine resolution (default), 2 - super fine resolution)
+def calculateCutMargin(resolution, leave = DEFAULT_LEAVE):
+	if resolution == 0:
+		output = leave / 2
+
+	elif resolution == 2:
+		output = leave * 2
+
+	else:
+		output = leave
+
+	return math.ceil(output)
+
 
 # Autorun part (for standalone use)
 if __name__ == "__main__":
