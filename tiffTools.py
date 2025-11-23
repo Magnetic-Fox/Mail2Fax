@@ -159,3 +159,14 @@ def scaleToResolution(inputData, resolution):
 	else:
 		# No conversion at all
 		return inputData
+
+# Picture place function
+def placePicture(inputFileName, outputFileName, pictureToPlaceData, pictureToPlacePosition, pictureToPlaceGeometry):
+	convertCommand = [	"convert", inputFileName,
+				"-", "-gravity", pictureToPlacePosition, "-geometry", pictureToPlaceGeometry, "-composite",
+				outputFileName	]
+
+	convert = subprocess.Popen(convertCommand, stdin = subprocess.PIPE)
+	convert.communicate(pictureToPlaceData)
+
+	return
