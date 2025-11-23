@@ -170,3 +170,25 @@ def placePicture(inputFileName, outputFileName, pictureToPlaceData, pictureToPla
 	convert.communicate(pictureToPlaceData)
 
 	return
+
+# Picture place function (file-only version)
+def placePictureFile(inputFileName, outputFileName, pictureToPlaceFile, pictureToPlacePosition, pictureToPlaceGeometry):
+	convertCommand = [	"convert", inputFileName,
+				pictureToPlaceFile, "-gravity", pictureToPlacePosition, "-geometry", pictureToPlaceGeometry, "-composite",
+				outputFileName	]
+
+	subprocess.run(convertCommand)
+
+	return
+
+# TIFF to G3 converter
+def TIFFtoG3(tiffFile, G3File):
+	g3file = open(G3File, "wb")
+
+	tifftopnm = subprocess.Popen(["tifftopnm", tiffFile], stdout = subprocess.PIPE)
+	pgmtopbm = subprocess.Popen(["pgmtopbm"], stdin = tifftopnm.stdout, stdout = subprocess.PIPE)
+	pbm2g3 = subprocess.run(["pbm2g3"], stdin = pgmtopbm.stdout, stdout = g3file)
+
+	g3file.close()
+
+	return
