@@ -2,37 +2,58 @@
 
 # TIFF tools utilizing paps, gs, convert, tiffset and Pillow (PIL)
 #
-# by Magnetic-Fox, 19.04.2025 - 23.11.2025
+# by Magnetic-Fox, 19.04.2025 - 12.12.2025
 #
 # (C)2025 Bartłomiej "Magnetic-Fox" Węgrzyn
 
+import io
+import math
 import subprocess
 import PIL.Image
-import math
 
 
-# Image to non-G3 TIFF file converter
-def imageToTIFF(imageFileName, tiffFileName, pageWidth = 1728, marginLeft = 32, marginRight = 32):
-	# Get image size to test if image has to be rotated
-	img = PIL.Image.open(imageFileName)
-	width, height = img.size
+# Get image size function
+def getImageSize(imageData):
+	img = PIL.Image.open(io.BytesIO(imageData))
+	width = img.width
+	height = img.height
 	img.close()
+	return width, height
+
+# Image data to non-G3 TIFF data converter
+def imageDataToTIFF(imageData, pageWidth = 1728, marginLeft = 32, marginRight = 32):
+	# Get image size to test if image has to be rotated
+	width, height = getImageSize(imageData)
 
 	# Prepare command
-	command = ["convert", imageFileName]
+	convertCommand = ["convert", "-"]
 
 	# Set to rotate if needed
 	if width > height:
-		command += ["-rotate", "90"]
+		convertCommand += ["-rotate", "90"]
 
-	# Below should give such result for resize: 1664x
-	command += ["-resize", str(pageWidth - marginLeft - marginRight) + "x"]
-	command += ["-background", "white", "-gravity", "northwest", "-splice", str(marginLeft) + "x0"]
-	command += ["-background", "white", "-gravity", "northeast", "-splice", str(marginRight) + "x0"]
-	command += [tiffFileName]
+	# Below should give such result for resize (on default values): 1664x
+	convertCommand += ["-resize", str(pageWidth - marginLeft - marginRight) + "x"]
+	convertCommand += ["-background", "white", "-gravity", "northwest", "-splice", str(marginLeft) + "x0"]
+	convertCommand += ["-background", "white", "-gravity", "northeast", "-splice", str(marginRight) + "x0"]
+	convertCommand += ["tiff:-"]
 
 	# Convert images to TIFFs with auto-size and auto-margin
-	subprocess.run(command)
+	convert = subprocess.Popen(convertCommand, stdin = subprocess.PIPE, stdout = subprocess.PIPE)
+
+	return convert.communicate(imageData)[0]
+
+# Image file to non-G3 TIFF file converter (wrapper)
+def imageToTIFF(imageFileName, tiffFileName, pageWidth = 1728, marginLeft = 32, marginRight = 32):
+	imageFile = open(imageFileName, "rb")
+	imageData = imageFile.read()
+	imageFile.close()
+
+	tiffData = imageDataToTIFF(imageData, pageWidth, marginLeft, marginRight)
+
+	tiffFile = open(tiffFileName, "wb")
+	tiffFile.write(tiffData)
+	tiffFile.close()
 
 	return
 
@@ -127,6 +148,35 @@ def resizeAndApplyResolution(tiffFileName, resolution):
 
 	return
 
+# Function for applying DPI information to the TIFF file (0 - standard, 1 - fine, 2 - super fine)
+def applyDPIInformation(tiffFileName, resolution = 1):
+	# Prepare main tiffset command
+	tiffSetCommand = ["tiffset", "-s", "283"]
+
+	# Standard resolution
+	if resolution == 0:
+		tiffSetCommand += ["98.0"]
+
+	# Super fine resolution
+	elif resolution == 2:
+		tiffSetCommand += ["391.0"]
+
+	# Fine resolution
+	else:
+		tiffSetCommand += ["196.0"]
+
+	# Add file name
+	tiffSetCommand += [tiffFileName]
+
+	# Additional tiffsets before the main part (make space for DPI information and set horizontal DPI to 204)
+	subprocess.run(["tiffset", "-s", "296", "2", tiffFileName])
+	subprocess.run(["tiffset", "-s", "282", "204.0", tiffFileName])
+
+	# Main tiffset
+	subprocess.run(tiffSetCommand)
+
+	return
+
 # Geometry recalculation function
 def recalculateGeometry(geometryData, resolution = 1):
 	# Unpack geometry data
@@ -190,5 +240,61 @@ def TIFFtoG3(tiffFile, G3File):
 	pbm2g3 = subprocess.run(["pbm2g3"], stdin = pgmtopbm.stdout, stdout = g3file)
 
 	g3file.close()
+
+	return
+
+# Note for imageToG3TIFF - why default page height is 2000 pixels?
+# It's because of MGetty's internal height value. If the image is less or equal 2000 pixels,
+# then it won't be scaled, which of course means best possible quality while sending fax.
+
+# Image data to G3 TIFF file converter (resolution data to apply: 0 - standard, 1 - fine, 2 - super fine)
+def imageToG3TIFF(imageData, tiffFileName, resolution = 1, pageWidth = 1728, pageHeight = 2000, marginLeft = 32, marginRight = 32):
+	# Initial convert (with rotation)
+	nonG3TIFFData = imageDataToTIFF(imageData, pageWidth, marginLeft, marginRight)
+
+	# Get converted image size
+	width, height = getImageSize(nonG3TIFFData)
+
+	# If image height is greater than chosen page height, then resize it and center (keep page width)
+	if height > pageHeight:
+		convertCommand = [	"convert", "-",
+					"-resize", "x" + str(pageHeight),
+					"-gravity", "center",
+					"-background", "white",
+					"-extent", str(pageWidth) + "x",
+					"pnm:-"	]
+
+		convert = subprocess.Popen(convertCommand, stdin = subprocess.PIPE, stdout = subprocess.PIPE)
+		pnmData = convert.communicate(nonG3TIFFData)[0]
+
+	# If image height is less or equal chosen page height, just convert it to the PNM format
+	else:
+		convertCommand = ["convert", "-", "pnm:-"]
+		convert = subprocess.Popen(convertCommand, stdin = subprocess.PIPE, stdout = subprocess.PIPE)
+		pnmData = convert.communicate(nonG3TIFFData)[0]
+
+	# Convert PNM data to PBM
+	ppmtopgmCommand = ["ppmtopgm"]
+	pgmtopbmCommand = ["pgmtopbm"]
+
+	ppmtopgm = subprocess.Popen(ppmtopgmCommand, stdin = subprocess.PIPE, stdout = subprocess.PIPE)
+	pgmtopbm = subprocess.Popen(pgmtopbmCommand, stdin = subprocess.PIPE, stdout = subprocess.PIPE)
+
+	pgmData = ppmtopgm.communicate(pnmData)[0]
+	pbmData = pgmtopbm.communicate(pgmData)[0]
+
+	# Open file to save G3 TIFF data
+	tiffFile = open(tiffFileName, "wb")
+
+	# Convert PBM to G3 TIFF
+	pnmtotiffCommand = ["pnmtotiff", "-g3"]
+	pnmtotiff = subprocess.Popen(pnmtotiffCommand, stdin = subprocess.PIPE, stdout = tiffFile)
+	pnmtotiff.communicate(pbmData)
+
+	# Close file
+	tiffFile.close()
+
+	# Apply DPI information to the TIFF file
+	applyDPIInformation(tiffFileName, resolution)
 
 	return
