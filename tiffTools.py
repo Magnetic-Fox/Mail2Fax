@@ -2,7 +2,7 @@
 
 # TIFF tools utilizing paps, gs, convert, tiffset and Pillow (PIL)
 #
-# by Magnetic-Fox, 19.04.2025 - 12.12.2025
+# by Magnetic-Fox, 19.04.2025 - 13.12.2025
 #
 # (C)2025 Bartłomiej "Magnetic-Fox" Węgrzyn
 
@@ -297,4 +297,12 @@ def imageToG3TIFF(imageData, tiffFileName, resolution = 1, pageWidth = 1728, pag
 	# Apply DPI information to the TIFF file
 	applyDPIInformation(tiffFileName, resolution)
 
+	return
+
+# Image file to G3 TIFF file converter (wrapper)
+def imageFileToG3TIFF(imageFileName, tiffFileName, resolution = 1, pageWidth = 1728, pageHeight = 2000, marginLeft = 32, marginRight = 32):
+	imageFile = open(imageFileName, "rb")
+	imageData = imageFile.read()
+	imageFile.close()
+	imageToG3TIFF(imageData, tiffFileName, resolution, pageWidth, pageHeight, marginLeft, marginRight)
 	return
