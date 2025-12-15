@@ -8,7 +8,7 @@
 # Software intended for use on Linux systems (especially Debian)
 # because of calling conventions and specific system utilities used
 #
-# by Magnetic-Fox, 13.07.2024 - 23.11.2025
+# by Magnetic-Fox, 13.07.2024 - 15.12.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -469,8 +469,10 @@ def convertTextToTIFF(fileName, fileNameWithoutExt):
 	return
 
 # Wrapper for converting images to non-G3 TIFF files
-def convertImageToTIFF(fileName, fileNameWithoutExt, pageWidth = 1728, marginLeft = 32, marginRight = 32):
-	tiffTools.imageToTIFF(fileName, fileNameWithoutExt + ".tiff", pageWidth, marginLeft, marginRight)
+def convertImageToTIFF(fileName, fileNameWithoutExt, pageWidth = 1728, pageHeight = 2000, marginLeft = 32, marginRight = 32):
+	# for now, resolution is always fine (1), because MGetty can operate on normal or fine resolutions only
+	# (and automatically scales images down when set to send using standard resolution)
+	tiffTools.imageFileToG3TIFF(fileName, fileNameWithoutExt + ".tiff", 1, pageWidth, pageHeight, marginLeft, marginRight)
 	return
 
 # Procedure for logging message contents to file
