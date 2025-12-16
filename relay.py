@@ -8,7 +8,7 @@
 # Software intended for use on Linux systems (especially Debian)
 # because of calling conventions and specific system utilities used
 #
-# by Magnetic-Fox, 13.07.2024 - 15.12.2025
+# by Magnetic-Fox, 13.07.2024 - 16.12.2025
 #
 # (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -811,8 +811,11 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 			except:
 				logNotice(StringTable.HEADER_SAVE_ERROR_1 + s_subj + StringTable.HEADER_SAVE_ERROR_2 + s_from + StringTable.HEADER_SAVE_ERROR_3)
 
+		# Iteration start
+		fileNumber = 0
+
 		# Now convert all the saved files (text and images) to the TIFFs
-		for fileNumber in range(len(fileList)):
+		while(fileNumber < len(fileList)):
 			# Unpack file name and extension
 			fN, fExt = os.path.splitext(fileList[fileNumber])
 
@@ -824,8 +827,29 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 				# Update the file name on the list
 				fileList[fileNumber] = fN + ".tiff"
 
-				# And apply the cutter (to prevent wasting paper on a fax machine)
-				cutter.loadAndCrop(fileList[fileNumber])
+				# Get TIFF subpage count
+				textImageCount = getImageCount(fileList[fileNumber])
+
+				# Unpack multipage TIFF if text file was long
+				if textImageCount > 1:
+					# Set temporary files prefix like x0000 (where x = fileNumber + 1)
+					tempFileList = unpackTIFFandPrepare((fileNumber + 1) * 10000, fileList[fileNumber])
+
+					# Apply cutter to all the pages
+					for tempFile in tempFileList:
+						cutter.loadAndCrop(tempFile)
+
+					# Update file list
+					fileList.pop(fileNumber)
+					fileList[fileNumber:fileNumber] = tempFileList
+
+					# Update iterator
+					fileNumber += textImageCount - 1
+
+				# Simply process if there was a one-page TIFF
+				else:
+					# Apply cutter to the single file
+					cutter.loadAndCrop(fileList[fileNumber])
 
 			# Image files
 			else:
@@ -839,6 +863,9 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 				except:
 					# Probably corrupted image
 					logNotice(StringTable.IMAGE_CORRUPTED_ERROR_1 + s_subj + StringTable.IMAGE_CORRUPTED_ERROR_2 + s_from + StringTable.IMAGE_CORRUPTED_ERROR_3)
+
+			# Go to the next position on the list
+			fileNumber += 1
 
 		# Now prepare the faxspool command
 		if standardTriggered:
