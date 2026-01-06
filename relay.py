@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 # E-Mail to Fax Relay Utility for Procmail and MGetty-Fax (faxspool)
+# Version 1.7
 #
 # Using PAPS, GhostScript, ImageMagick (convert), Pillow (PIL),
 # file command and system logger (logger; now via Python modules)
@@ -8,175 +9,65 @@
 # Software intended for use on Linux systems (especially Debian)
 # because of calling conventions and specific system utilities used
 #
-# by Magnetic-Fox, 13.07.2024 - 16.12.2025
+# by Magnetic-Fox, 13.07.2024 - 06.01.2026
 #
-# (C)2024-2025 Bartłomiej "Magnetic-Fox" Węgrzyn!
+# (C)2024-2026 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
+
+# PROJECT MARKED AS OBSOLETE, NEEDING TO BE REWRITTEN FROM SCRATCH!
+# SOME IDEAS NOW MIGHT LOOK AS A GLUE LOGIC BECAUSE OF
+# PREPARING TO MAKE EVERYTHING BETTER IN THE NEWER VERSION
+# OF THIS SOFTWARE!
 
 import tempfile
 import sys
 import os
 import subprocess
 import base64
-import dateutil
-import datetime
 import configparser
-import io
-import gzip
 import mimetypes
-import logging
-import logging.handlers
 import email
-import email.header
 import email.quoprimime
-import html.parser
-import PIL.Image
 import StringTable
 import cutter
 import tiffTools
+import htmlTools
+import textTools
+import imageTools
+import dataTools
+import loggerTools
+import additionalTools
+import mailTools
 
 
 # Global variable for logger (to be replaced by logging class someday...)
 preparedLogger = None
 
-# Static settings class (with default settings applied)
-class Settings:
-	SETTINGS_FILE = "settings.ini"
-	SETTINGS_RELOADED = False
-	NO_DATA = "(no data)"
-	SENDER = "Sender:  "
-	SUBJECT = "Subject: "
-	DATE = "Date:    "
-	PHONE_NUMBER = ""	# well, string-like variable is best choice for phone numbers
-	DELETE_SUBJECT_TRIGGER = True
-	DELETE_MESSAGE_TRIGGER = True
-	SUBJECT_TRIGGER = "[FAX] "
-	MESSAGE_TRIGGER = "!DISCARD!"
-	STANDARD_TRIGGER = "!STANDARD!"
-	USE_STANDARD_TRIGGER = True
-	DELETE_STANDARD_TRIGGER = True
-	USE_PLAIN = True
-	MSPACES_TONL = False
-	AMPS_CHANGE = False
-	DEFAULT_SETTINGS = "FAX"
-	USE_DEFAULT_SETTINGS_ON_WRONG_PARAM = False
-	STRIP_BE_NLS = True
-	STRIP_INTEXT_NLS = True
-	DEFAULT_LOGGER_ADDRESS = "/dev/log"
-	ROUTE_TO_FAX = ""
-	TEXT_FONT_NAME = "Monospace"
-	TEXT_FONT_SIZE = 10
-	TEXT_TOP_MARGIN = 6
-	DATE_TIMEZONE = ""	# will be interpreted as local timezone
-	DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-	LOG_MESSAGE_TO_FILE = True
-	MESSAGE_LOG_FILE = "/var/log/Mail2Fax/mails.gz"
-	UNPACK_MULTI_TIFF = True
-
-# Great HTML to text part found on Stack Overflow
-class HTMLFilter(html.parser.HTMLParser):
-	text = ""
-
-	def handle_data(self, data):
-		self.text += data
-
-# Function for determining attachment's mime type (using file command)
-def determineMimeType(data):
-	fileCommand = ["file", "-b", "--mime-type", "-"]
-	fileProcess = subprocess.Popen(fileCommand, stdin = subprocess.PIPE, stdout = subprocess.PIPE)
-
-	if isinstance(data, str):
-		data = data.encode()
-
-	return fileProcess.communicate(data)[0].decode().rstrip()
-
-# Simple main type extractor from mime type got from file command
-def getMainType(mimeType):
-	return mimeType.split("/")[0]
-
-# Simple sub type extractor from mime type got from file command
-def getSubType(mimeType):
-	return "".join(mimeType.split("/")[1:])
-
-# Simple new line characters counter
-def countNewLines(data, position):
-	count = 0
-
-	while data.find("\n", position) == position:
-		count = count + 1
-		position = position + 1
-
-	return count
-
-# Simple duplicated new line characters remover
-def removeDuplicatedNewLines(data):
-	while data.find("\n\n\n") != -1:
-		count = countNewLines(data, data.find("\n\n\n"))
-		data = data.replace("\n" * count, "\n\n")
-
-	return data
-
-# Simple spaces counter
-def spacesCount(string, position):
-	for x in range(position, len(string)):
-		if(string[x] != ' '):
-			return x - position
-
-	if(position <= len(string)):
-		return len(string) - position
-
-	else:
-		return 0
-
-# Multi spaces to returns
-def multiSpacesToReturns(string):
-	while(string.find("  ") != -1):
-		# Not really optimized line, but I didn't want to use regexes ;)
-		string = string.replace(" " * spacesCount(string, string.find("  ")), "\n" * (spacesCount(string, string.find("  ")) - 1), 1)
-
-	return string
+# Global settings class (with default settings applied)
+Settings = additionalTools.Settings()
 
 # Simple procedure for preparing system logger to use globally in this script (to be changed to the logging class someday...)
 def prepareGlobalLogger():
 	global preparedLogger
 
 	if preparedLogger == None:
-		preparedLogger = prepareLogger(loggerAddress = Settings.DEFAULT_LOGGER_ADDRESS)
-
-	return
-
-# Simple logger preparation function
-def prepareLogger(loggerName = __name__, loggerAddress = Settings.DEFAULT_LOGGER_ADDRESS):
-	logger = logging.getLogger(loggerName)
-	handler = logging.handlers.SysLogHandler(address = loggerAddress)
-
-	logger.setLevel(logging.INFO)
-	logger.addHandler(handler)
-
-	return logger
-
-# Simple logging utility
-def logInfo(message, logger = None, prefix = ""):
-	if None:
-		raise Exception("No logger selected!")
-
-	logger.info(prefix + message)
+		preparedLogger = loggerTools.prepareLogger(loggerAddress = Settings.DEFAULT_LOGGER_ADDRESS)
 
 	return
 
 # Simple procedure for passing error messages to the system log
 def logError(errorString):
-	logInfo(logger = preparedLogger, prefix = StringTable.LOGGER_ERROR, message = errorString)
+	loggerTools.logInfo(logger = preparedLogger, prefix = StringTable.LOGGER_ERROR, message = errorString)
 	return
 
 # Simple procedure for passing warnings to the system log
 def logWarning(warningString):
-	logInfo(logger = preparedLogger, prefix = StringTable.LOGGER_WARNING, message = warningString)
+	loggerTools.logInfo(logger = preparedLogger, prefix = StringTable.LOGGER_WARNING, message = warningString)
 	return
 
 # Simple procedure for passing notices to the system log
 def logNotice(noticeString):
-	logInfo(logger = preparedLogger, prefix = StringTable.LOGGER_NOTICE, message = noticeString)
+	loggerTools.logInfo(logger = preparedLogger, prefix = StringTable.LOGGER_NOTICE, message = noticeString)
 	return
 
 # Procedure for loading settings from the INI file
@@ -289,88 +180,25 @@ def loadSettings(whichFax = "", settingsFile = Settings.SETTINGS_FILE):
 		else:
 			logNotice(StringTable.ROUTE_NO_SETTINGS_1 + Settings.ROUTE_TO_FAX + StringTable.ROUTE_NO_SETTINGS_2 + whichFax + StringTable.ROUTE_NO_SETTINGS_3)
 
+	# Indicate that settings were reloaded
 	Settings.SETTINGS_RELOADED = True
 
 	return
 
-# Function for finding HTML-style amp character
-def findAmpChar(string, position = 0):
-	ampPos=string.find('&', position)
-	endPos=string.find(';', ampPos)
-
-	if endPos > ampPos:
-		return string[ampPos:endPos+1]
-	else:
-		return ""
-
-# Function for changing all HTML-style amp characters
-def changeAmpChars(string):
-	position = 0
-
-	while(findAmpChar(string, position) != ""):
-		converter = HTMLFilter()
-		converter.feed(findAmpChar(string))
-		string = string.replace(findAmpChar(string), converter.text)
-		position = string.find("&", position + 1)
-
-		if position < 0:
-			break
-
-	return string
-
-# Mail header decoding helper
-def decodeHeader(input):
-	output = ""
-
-	if input != None:
-		parts = email.header.decode_header(input)
-		for part in parts:
-			if part[1] == None:
-				encoding = "ascii"
-			else:
-				encoding = part[1]
-
-			try:
-				output += str(part[0], encoding)
-			except:
-				output += part[0]
-
-	# If output is nothing then set it to None
-	if output == "":
-		output = None
-
-	# Return output
-	return output
-
-# Simple and good utility to make date/time more readable and to deal
-# with timezones if possible (by default, relatively to the local machine's timezone)
-def mailDateToFormat(inp, timezone = "", format = "%Y-%m-%d %H:%M:%S"):
-	try:
-		return dateutil.parser.parse(inp).astimezone(dateutil.tz.gettz(timezone)).strftime(format)
-	except:
-		return inp
-
-# Try..Except version of decodeHeader() function with returning None on empty strings
-def tryDecodeHeader(header):
-	try:
-		return decodeHeader(header)
-	except:
-		return None
-
 # Function for gathering main headers from message ("From", "Subject" and "Date")
 def getMailInfo(message):
-	s_from = tryDecodeHeader(message["From"])
+	s_from = mailTools.tryDecodeHeader(message["From"])
 	if s_from == None:
 		s_from = Settings.NO_DATA
 
-	s_subj = tryDecodeHeader(message["Subject"])
+	s_subj = mailTools.tryDecodeHeader(message["Subject"])
 	if s_subj == None:
 		s_subj = Settings.NO_DATA
 	elif (s_subj[0:len(Settings.SUBJECT_TRIGGER)] == Settings.SUBJECT_TRIGGER) and (len(s_subj) > len(Settings.SUBJECT_TRIGGER)):
 		if Settings.DELETE_SUBJECT_TRIGGER:
 			s_subj = s_subj[len(Settings.SUBJECT_TRIGGER):]
 
-	s_date = mailDateToFormat(tryDecodeHeader(message["Date"]), Settings.DATE_TIMEZONE, Settings.DATE_FORMAT)
+	s_date = mailTools.mailDateToFormat(mailTools.tryDecodeHeader(message["Date"]), Settings.DATE_TIMEZONE, Settings.DATE_FORMAT)
 	if s_date == None:
 		s_date = Settings.NO_DATA
 
@@ -387,49 +215,6 @@ def prepareTextHeader(s_from, s_subj, s_date, addReturns = True):
 
 	return textHeader
 
-# Procedure grouping plain-text and non-plain-text parts of the message (indexed output)
-def groupTypesIndexes(parts, plainInt, nonPlInt):
-	index = 0
-	for test in parts:
-		if "text" in test.get_content_type():
-			if "plain" in test.get_content_type():
-				plainInt += [index]
-			else:
-				nonPlInt += [index]
-		index += 1
-	return
-
-# Procedure removing indexes depending on "use plain text" setting
-def plainAndHTMLDecision(parts, plainInt, nonPlInt):
-	if Settings.USE_PLAIN:
-		if plainInt != []:
-			for i in reversed(nonPlInt):
-				parts.pop(i)
-	else:
-		if nonPlInt != []:
-			for i in reversed(plainInt):
-				parts.pop(i)
-	return
-
-# Binding procedure for plain or non-plain decision
-def decidePlainOrHTML(parts):
-	plainInt = []
-	nonPlInt = []
-	groupTypesIndexes(parts, plainInt, nonPlInt)
-	plainAndHTMLDecision(parts, plainInt, nonPlInt)
-	return
-
-# Very simple get image format (if possible) utility
-def quickImageFormat(data):
-	try:
-		return PIL.Image.open(io.BytesIO(data)).format.lower()
-	except:
-		return ""
-
-# Very quick and simple "if-we-have-an-image" test
-def quickImageTest(data):
-	return quickImageFormat(data) != ""
-
 # One function to save data to make code more readable
 def saveMessagePart(binary, outFile, data, counter, s_subj, s_from):
 	# Check if mode is correct according to the data
@@ -445,11 +230,11 @@ def saveMessagePart(binary, outFile, data, counter, s_subj, s_from):
 		if isinstance(data, bytes):
 			binary = True
 
-			if quickImageFormat(data) == "":
+			if imageTools.quickImageFormat(data) == "":
 				# Let's say JPG is a default extension in such situation (should be harmless)
 				outFile = str(counter) + ".jpg"
 			else:
-				outFile = str(counter) + "." + quickImageFormat(data)
+				outFile = str(counter) + "." + imageTools.quickImageFormat(data)
 
 			logNotice(StringTable.SAVE_TEXT_1 + s_subj + StringTable.SAVE_TEXT_2 + s_from + StringTable.SAVE_TEXT_3)
 
@@ -462,71 +247,6 @@ def saveMessagePart(binary, outFile, data, counter, s_subj, s_from):
 	fl.close()
 
 	return outFile
-
-# Wrapper for converting text to G3 TIFF image
-def convertTextToTIFF(fileName, fileNameWithoutExt):
-	tiffTools.textFileToTIFF(fileNameWithoutExt + ".tiff", fileName, 1, Settings.TEXT_FONT_NAME + " " + str(Settings.TEXT_FONT_SIZE), Settings.TEXT_TOP_MARGIN)
-	return
-
-# Wrapper for converting images to non-G3 TIFF files
-def convertImageToTIFF(fileName, fileNameWithoutExt, pageWidth = 1728, pageHeight = 2000, marginLeft = 32, marginRight = 32):
-	# for now, resolution is always fine (1), because MGetty can operate on normal or fine resolutions only
-	# (and automatically scales images down when set to send using standard resolution)
-	tiffTools.imageFileToG3TIFF(fileName, fileNameWithoutExt + ".tiff", 1, pageWidth, pageHeight, marginLeft, marginRight)
-	return
-
-# Procedure for logging message contents to file
-def logMessageToFile(filename, data):
-	try:
-		gLogFile = gzip.open(filename, "at")
-		gLogFile.write(data)
-		gLogFile.write("\n")
-		gLogFile.close()
-
-	except Exception as e:
-		logError(StringTable.LOGGING_MESSAGE_FAILED)
-
-	return
-
-# Function for gathering image count in one file
-def getImageCount(filename):
-	img = PIL.Image.open(filename)
-	imgCount = img.n_frames
-	img.close()
-
-	return imgCount
-
-# Function for unpacking multipage TIFF files and place in the main temporary directory
-def unpackTIFFandPrepare(counter, filename):
-	newFileList = []
-
-	try:
-		# Prepare another temporary directory and change directory to it
-		oldDir = os.getcwd()
-		dir = tempfile.TemporaryDirectory()
-		os.chdir(dir.name)
-
-		# Split TIFF image
-		tiffSplitCommand = ["tiffsplit", oldDir + "/" + filename]
-		subprocess.run(tiffSplitCommand)
-
-		# Get and sort single TIFF files
-		fileList = os.listdir(".")
-		fileList.sort()
-
-		# Rename files according to the counter and move to the main temporary directory
-		for file in fileList:
-			os.rename(file, oldDir + "/" + str(counter) + ".tiff")
-			newFileList += [str(counter) + ".tiff"]
-			counter += 1
-
-	finally:
-		# Change back directory and clean up temporary directory
-		os.chdir(oldDir)
-		dir.cleanup()
-
-	# Return list of additional files
-	return newFileList
 
 # Main program procedure for gathering mail data and process it
 def getAndProcess(passBuffer = None, whichFax = ""):
@@ -574,7 +294,10 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 
 		# Log message to the GZIP file
 		if Settings.LOG_MESSAGE_TO_FILE:
-			logMessageToFile(Settings.MESSAGE_LOG_FILE, buffer)
+			try:
+				loggerTools.logToCompressedFile(Settings.MESSAGE_LOG_FILE, buffer)
+			except:
+				logError(StringTable.LOGGING_MESSAGE_FAILED)
 
 		# Import message and get main information from headers
 		message = email.message_from_string(buffer)
@@ -586,14 +309,14 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 			parts = [message]
 
 		# First plain or non-plain decision
-		decidePlainOrHTML(parts)
+		additionalTools.decidePlainOrHTML(parts)
 
 		for part in parts:
 			# Unpack text from multipart (plain and html decision)
 			if part.is_multipart():
 				# Second plain or non-plain decision
 				parts2 = part.get_payload()
-				decidePlainOrHTML(parts2)
+				additionalTools.decidePlainOrHTML(parts2)
 
 				# Should not be more parts on the list at this point (so get the only one)
 				part = parts2[0]
@@ -615,7 +338,7 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 
 			# Get file name properties (to extract extension) and also try to
 			# decode a filename (big thanks to MarX, who accidentally found that part missing!)
-			filename = decodeHeader(part.get_filename())
+			filename = mailTools.decodeHeader(part.get_filename())
 			if filename == None:
 				fN = ""
 				fExt = ""
@@ -627,9 +350,9 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 				continue
 
 			# Determine and store attachment's type information in temporary variables to make further code look better
-			contentMimeType = determineMimeType(data)
-			contentMainType = getMainType(contentMimeType)
-			contentSubType = getSubType(contentMimeType)
+			contentMimeType = dataTools.determineMimeType(data)
+			contentMainType = dataTools.getMainType(contentMimeType)
+			contentSubType = dataTools.getSubType(contentMimeType)
 			contentExtension = mimetypes.guess_extension(contentMimeType)
 
 			# Change extension to this from mail if guessing failed
@@ -650,12 +373,12 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 
 			# Additional (old) tests
 			# Let's check if text/plain isn't in fact an image...
-			if (contentMainType == "text") and isinstance(data, bytes) and quickImageTest(data):
+			if (contentMainType == "text") and isinstance(data, bytes) and imageTools.quickImageTest(data):
 				contentMainType = "image"
 				logNotice(StringTable.SAVE_TEXT_1 + s_subj + StringTable.SAVE_TEXT_2 + s_from + StringTable.SAVE_TEXT_3)
 
 			# Let's check if image/* isn't in fact a text...
-			if (contentMainType == "image") and isinstance(data, str) and not quickImageTest(data):
+			if (contentMainType == "image") and isinstance(data, str) and not imageTools.quickImageTest(data):
 				contentMainType = "text"
 				logNotice(StringTable.SAVE_IMAGE_1 + s_subj + StringTable.SAVE_IMAGE_2 + s_from + StringTable.SAVE_IMAGE_3)
 
@@ -670,19 +393,16 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 					data = str(data)
 
 				if contentSubType == "html":
-					# Replace any <br> and <br /> to the new lines, because this simple HTMLFilter can't do this automatically
-					data = data.replace("<br>", "\n").replace("<br />", "\n")
-					converter = HTMLFilter()
-					converter.feed(data)
-					# This will simply convert HTML to the plain-text
-					data = converter.text
+					# Convert HTML to plain text
+					data = htmlTools.HTMLToText(data)
+
 				else:
 					# Multispaces to new lines option
 					if Settings.MSPACES_TONL:
-						data = multiSpacesToReturns(data)
+						data = textTools.multiSpacesToReturns(data)
 					# Changing amp characters option
 					if Settings.AMPS_CHANGE:
-						data = changeAmpChars(data)
+						data = textTools.changeAmpChars(data)
 
 				# Convert any CR+LF to just LF (big thanks to MariuszK, who accidentally found that part missing!)
 				data = data.replace("\r\n", "\n")
@@ -720,11 +440,11 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 
 				# Remove leading and trailing new lines option
 				if Settings.STRIP_BE_NLS:
-					data = data.lstrip('\n').rstrip('\n')
+					data = data.strip('\n')
 
 				# Remove in-text more-than-two new lines option
 				if Settings.STRIP_INTEXT_NLS:
-					data = removeDuplicatedNewLines(data)
+					data = textTools.removeDuplicatedNewLines(data)
 
 				# Save text to temporary file
 				if not messageTriggered:
@@ -746,17 +466,17 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 				if(contentExtension != ""):
 					# Additional test if attachment has correct extension (for too quick locally sent messages with image attachments)
 					if contentExtension.lower() == ".txt":
-						if quickImageFormat(data) == "":
+						if imageTools.quickImageFormat(data) == "":
 							# Let's say JPG is a default extension if it is unknown
 							contentExtension = ".jpg"
 						else:
-							contentExtension = "." + quickImageFormat(data)
+							contentExtension = "." + imageTools.quickImageFormat(data)
 
 					outFile = str(counter) + contentExtension
 
-				elif(quickImageFormat(data) != ""):
+				elif(imageTools.quickImageFormat(data) != ""):
 					# Try to guess image format
-					contentExtension = "." + quickImageFormat(data)
+					contentExtension = "." + imageTools.quickImageFormat(data)
 					# Update filename (again, big thanks to MarX, who accidentally found that part missing!)
 					outFile = str(counter) + contentExtension
 
@@ -776,9 +496,9 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 
 					# It's not a typo - extension here will be TIF (not TIFF!)
 					if (Settings.UNPACK_MULTI_TIFF) and (contentExtension.lower() == ".tif"):
-						imageCount = getImageCount(outFile)
+						imageCount = tiffTools.getImageCount(outFile)
 						if imageCount > 1:
-							fileList += unpackTIFFandPrepare(counter, outFile)
+							fileList += tiffTools.unpackMultipageTIFF(dir.name + "/" + outFile, True, counter)
 							counter += imageCount - 1
 							outFile = ""
 
@@ -822,18 +542,18 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 			# Text files
 			if fExt == ".txt":
 				# Convert text files to G3 TIFFs
-				convertTextToTIFF(fileList[fileNumber], fN)
+				tiffTools.textFileToTIFF(fN + ".tiff", fileList[fileNumber], 1, Settings.TEXT_FONT_NAME + " " + str(Settings.TEXT_FONT_SIZE), Settings.TEXT_TOP_MARGIN)
 
 				# Update the file name on the list
 				fileList[fileNumber] = fN + ".tiff"
 
 				# Get TIFF subpage count
-				textImageCount = getImageCount(fileList[fileNumber])
+				textImageCount = tiffTools.getImageCount(fileList[fileNumber])
 
 				# Unpack multipage TIFF if text file was long
 				if textImageCount > 1:
 					# Set temporary files prefix like x0000 (where x = fileNumber + 1)
-					tempFileList = unpackTIFFandPrepare((fileNumber + 1) * 10000, fileList[fileNumber])
+					tempFileList = tiffTools.unpackMultipageTIFF(dir.name + "/" + fileList[fileNumber], True, (fileNumber + 1) * 10000)
 
 					# Apply cutter to all the pages
 					for tempFile in tempFileList:
@@ -855,7 +575,7 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 			else:
 				try:
 					# Try to convert an image (if possible)
-					convertImageToTIFF(fileList[fileNumber], fN)
+					tiffTools.imageFileToG3TIFF(fileList[fileNumber], fN + ".tiff", 1, 1728, 2000, 32, 32)
 
 					# Update the file name on the list
 					fileList[fileNumber] = fN + ".tiff"
