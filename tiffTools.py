@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 
-# TIFF tools utilizing paps, gs, convert, tiffset and Pillow (PIL)
+# TIFF tools utilizing paps, gs, convert, tiffset, Pillow (PIL) and more
 #
-# by Magnetic-Fox, 19.04.2025 - 13.12.2025
+# by Magnetic-Fox, 19.04.2025 - 06.01.2026
 #
-# (C)2025 Bartłomiej "Magnetic-Fox" Węgrzyn
+# (C)2025-2026 Bartłomiej "Magnetic-Fox" Węgrzyn
 
+import os
 import io
 import math
+import shutil
+import tempfile
 import subprocess
 import PIL.Image
 
@@ -19,6 +22,13 @@ def getImageSize(imageData):
 	height = img.height
 	img.close()
 	return width, height
+
+# Function for gathering image count in one file
+def getImageCount(filename):
+	img = PIL.Image.open(filename)
+	imgCount = img.n_frames
+	img.close()
+	return imgCount
 
 # Image data to non-G3 TIFF data converter
 def imageDataToTIFF(imageData, pageWidth = 1728, marginLeft = 32, marginRight = 32):
@@ -306,3 +316,53 @@ def imageFileToG3TIFF(imageFileName, tiffFileName, resolution = 1, pageWidth = 1
 	imageFile.close()
 	imageToG3TIFF(imageData, tiffFileName, resolution, pageWidth, pageHeight, marginLeft, marginRight)
 	return
+
+# Function for unpacking multipage TIFF files and place them in the current working directory
+def unpackMultipageTIFF(filename, toFile = False, counter = 1):
+	newFileList = []
+	tiffList = []
+
+	try:
+		# Prepare another temporary directory and change directory to it
+		oldDir = os.getcwd()
+		dir = tempfile.TemporaryDirectory()
+		os.chdir(dir.name)
+
+		# Split TIFF image
+		tiffSplitCommand = ["tiffsplit", filename]
+		subprocess.run(tiffSplitCommand)
+
+		# Get and sort single TIFF files
+		fileList = os.listdir(".")
+		fileList.sort()
+
+		# If chosen to export to files, then move unpacked TIFFs to to current working directory
+		if toFile:
+			# Rename files according to the counter and move to the main temporary directory
+			for file in fileList:
+				shutil.move(file, oldDir + "/" + str(counter) + ".tiff")
+				newFileList += [str(counter) + ".tiff"]
+				counter += 1
+
+		# Otherwise
+		else:
+			# Read all files to the memory (do not move)
+			for file in fileList:
+				tiffFile = open(file, "rb")
+				tiffList += [tiffFile.read()]
+				tiffFile.close()
+
+	finally:
+		# Change back directory and clean up temporary directory
+		os.chdir(oldDir)
+		dir.cleanup()
+
+	# If chosen to export to files
+	if toFile:
+		# Return list of additional files
+		return newFileList
+
+	# Otherwise
+	else:
+		# Return list of TIFF files data
+		return tiffList
