@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # E-Mail to Fax Relay Utility for Procmail and MGetty-Fax (faxspool)
-# Version 1.7
+# Version 1.7a
 #
 # Using PAPS, GhostScript, ImageMagick (convert), Pillow (PIL),
 # file command and system logger (logger; now via Python modules)
@@ -9,7 +9,7 @@
 # Software intended for use on Linux systems (especially Debian)
 # because of calling conventions and specific system utilities used
 #
-# by Magnetic-Fox, 13.07.2024 - 06.01.2026
+# by Magnetic-Fox, 13.07.2024 - 26.02.2026
 #
 # (C)2024-2026 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -309,14 +309,14 @@ def getAndProcess(passBuffer = None, whichFax = ""):
 			parts = [message]
 
 		# First plain or non-plain decision
-		additionalTools.decidePlainOrHTML(parts)
+		additionalTools.decidePlainOrHTML(parts, Settings)
 
 		for part in parts:
 			# Unpack text from multipart (plain and html decision)
 			if part.is_multipart():
 				# Second plain or non-plain decision
 				parts2 = part.get_payload()
-				additionalTools.decidePlainOrHTML(parts2)
+				additionalTools.decidePlainOrHTML(parts2, Settings)
 
 				# Should not be more parts on the list at this point (so get the only one)
 				part = parts2[0]

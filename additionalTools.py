@@ -2,7 +2,7 @@
 
 # Additional tools and classes
 #
-# by Magnetic-Fox, 13.07.2024 - 06.01.2026
+# by Magnetic-Fox, 13.07.2024 - 26.02.2026
 #
 # (C)2024-2026 Bartłomiej "Magnetic-Fox" Węgrzyn!
 
@@ -57,8 +57,8 @@ def groupTypesIndexes(parts, plainInt, nonPlInt):
 	return
 
 # Procedure removing indexes depending on "use plain text" setting
-def plainAndHTMLDecision(parts, plainInt, nonPlInt):
-	if Settings.USE_PLAIN:
+def plainAndHTMLDecision(parts, plainInt, nonPlInt, settingsToUse):
+	if settingsToUse.USE_PLAIN:
 		if plainInt != []:
 			for i in reversed(nonPlInt):
 				parts.pop(i)
@@ -69,9 +69,9 @@ def plainAndHTMLDecision(parts, plainInt, nonPlInt):
 	return
 
 # Binding procedure for plain or non-plain decision
-def decidePlainOrHTML(parts):
+def decidePlainOrHTML(parts, settingsToUse):
 	plainInt = []
 	nonPlInt = []
 	groupTypesIndexes(parts, plainInt, nonPlInt)
-	plainAndHTMLDecision(parts, plainInt, nonPlInt)
+	plainAndHTMLDecision(parts, plainInt, nonPlInt, settingsToUse)
 	return
