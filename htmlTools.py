@@ -2,7 +2,7 @@
 
 # HTML tools for converting HTML to plain text
 #
-# by Magnetic-Fox, 13.07.2024 - 12.04.2026
+# by Magnetic-Fox, 13.07.2024 - 20.05.2026
 #
 # (C)2024-2026 Bartłomiej "Magnetic-Fox" Węgrzyn
 
@@ -23,6 +23,7 @@ def HTMLToText(inputData):
 	inputData = inputData.replace("<Br>", "\n").replace("<Br />", "\n")
 	inputData = inputData.replace("<bR>", "\n").replace("<bR />", "\n")
 	inputData = inputData.replace("<BR>", "\n").replace("<BR />", "\n")
+	inputData = inputData.replace("</p>", "</p>\n");
 
 	# Temporary variable for start position of <br ... > searching
 	posStart = 0
